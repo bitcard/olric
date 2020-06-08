@@ -76,6 +76,7 @@ const (
 	OpExpireReplica
 	OpQuery
 	OpLocalQuery
+	OpPublishDTopicMessage
 )
 
 type StatusCode uint8

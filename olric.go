@@ -58,6 +58,8 @@ var (
 
 	// ErrBadRequest denotes that request body is invalid.
 	ErrBadRequest = errors.New("bad request")
+
+	ErrServerGone = errors.New("server is gone")
 )
 
 // ReleaseVersion is the current stable version of Olric
@@ -67,6 +69,12 @@ const (
 	nilTimeout                = 0 * time.Second
 	requiredCheckpoints int32 = 2
 )
+
+// A full list of alive members. It's required for Pub/Sub and event dispatching systems.
+type members struct {
+	mtx sync.RWMutex
+	m   map[uint64]discovery.Member
+}
 
 // Olric implements a distributed, in-memory and embeddable key/value store and cache.
 type Olric struct {
@@ -112,6 +120,12 @@ type Olric struct {
 	// Internal TCP server and its client for peer-to-peer communication.
 	client *transport.Client
 	server *transport.Server
+
+	// A full list of alive members. It's required for Pub/Sub and event dispatching systems.
+	members members
+
+	// Dispatch topic messages
+	dtopic *dtopic
 
 	// Structures for flow control
 	ctx    context.Context
@@ -184,6 +198,8 @@ func New(c *config.Config) (*Olric, error) {
 		backups:    make(map[uint64]*partition),
 		operations: make(map[protocol.OpCode]func(*protocol.Message) *protocol.Message),
 		server:     transport.NewServer(c.BindAddr, c.BindPort, c.KeepAlivePeriod, flogger),
+		members:    members{m: make(map[uint64]discovery.Member)},
+		dtopic:     newDTopic(),
 		started:    c.Started,
 	}
 
@@ -314,6 +330,10 @@ func (db *Olric) startDiscovery() error {
 		}
 	}
 
+	db.members.mtx.Lock()
+	db.members.m[db.this.ID] = db.this
+	db.members.mtx.Unlock()
+
 	db.consistent.Add(db.this)
 	if db.discovery.IsCoordinator() {
 		err = db.bootstrapCoordinator()
@@ -422,6 +442,9 @@ func (db *Olric) registerOperations() {
 	// Distributed Query
 	db.operations[protocol.OpLocalQuery] = db.localQueryOperation
 	db.operations[protocol.OpQuery] = db.exQueryOperation
+
+	// Distributed Topic
+	db.operations[protocol.OpPublishDTopicMessage] = db.publishDTopicMessageOperation
 }
 
 func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Message {

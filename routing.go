@@ -357,11 +357,22 @@ func (db *Olric) processOwnershipReports(reports map[discovery.Member]ownershipR
 }
 
 func (db *Olric) processNodeEvent(event *discovery.ClusterEvent) {
+	db.members.mtx.Lock()
+	defer db.members.mtx.Unlock()
+
+	member, _ := db.discovery.DecodeNodeMeta(event.NodeMeta)
 	if event.Event == memberlist.NodeJoin {
-		member, _ := db.discovery.DecodeNodeMeta(event.NodeMeta)
+		db.members.m[member.ID] = member
 		db.consistent.Add(member)
 		db.log.V(2).Printf("[INFO] Node joined: %s", member)
 	} else if event.Event == memberlist.NodeLeave {
+		if _, ok := db.members.m[member.ID]; ok {
+			delete(db.members.m, member.ID)
+		} else {
+			db.log.V(2).Printf("[ERROR] Unknown node left: %s", event.NodeName)
+			return
+		}
+
 		db.consistent.Remove(event.NodeName)
 		// Don't try to used closed sockets again.
 		db.client.ClosePool(event.NodeName)
