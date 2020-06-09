@@ -78,6 +78,9 @@ const (
 	OpLocalQuery
 	OpPublishDTopicMessage
 	OpDestroyDTopic
+	OpDTopicPublish
+	OpDTopicAddListener
+	OpDTopicRemoveListener
 )
 
 type StatusCode uint8
