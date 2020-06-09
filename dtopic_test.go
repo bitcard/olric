@@ -40,7 +40,7 @@ func TestDTopic_PublishStandalone(t *testing.T) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	onMessage := func(msg TopicMessage) {
+	onMessage := func(msg DTopicMessage) {
 		defer cancel()
 		if msg.Message.(string) != "message" {
 			t.Fatalf("Expected nil. Got: %v", err)
@@ -87,7 +87,7 @@ func TestDTopic_RemoveListener(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	onMessage := func(msg TopicMessage) {}
+	onMessage := func(msg DTopicMessage) {}
 	regID, err := dt.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
@@ -121,7 +121,7 @@ func TestDTopic_PublishCluster(t *testing.T) {
 
 	var count int32
 	ctx, cancel := context.WithCancel(context.Background())
-	onMessage := func(msg TopicMessage) {
+	onMessage := func(msg DTopicMessage) {
 		defer cancel()
 		if msg.Message.(string) != "message" {
 			t.Fatalf("Expected nil. Got: %v", err)
@@ -204,7 +204,7 @@ func TestDTopic_Destroy(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	onMessage := func(msg TopicMessage) {}
+	onMessage := func(msg DTopicMessage) {}
 	regID, err := dtOne.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
@@ -223,5 +223,72 @@ func TestDTopic_Destroy(t *testing.T) {
 	err = dtOne.RemoveListener(regID)
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("Expected ErrInvalidArgument. Got: %v", err)
+	}
+}
+
+func TestDTopic_DTopicMessage(t *testing.T) {
+	c := newTestCluster(nil)
+	defer c.teardown()
+
+	dbOne, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	dbTwo, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	// Add listener
+
+	dtOne, err := dbOne.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	onMessage := func(msg DTopicMessage) {
+		defer cancel()
+		if msg.Message.(string) != "message" {
+			t.Fatalf("Expected nil. Got: %v", err)
+		}
+
+		if msg.PublisherAddr != dbTwo.this.String() {
+			t.Fatalf("Expected %s. Got: %s", dbTwo.this.String(), msg.PublisherAddr)
+		}
+
+		if msg.PublishedAt <= 0 {
+			t.Fatalf("Invalid PublishedAt: %d", msg.PublishedAt)
+		}
+	}
+
+	regID, err := dtOne.AddListener(onMessage)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	defer func() {
+		err = dtOne.RemoveListener(regID)
+		if err != nil {
+			t.Fatalf("Expected nil. Got: %v", err)
+		}
+	}()
+
+	// Publish
+
+	dtTwo, err := dbTwo.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	err = dtTwo.Publish("message")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("Failed to call onMessage function")
 	}
 }
