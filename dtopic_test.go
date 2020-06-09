@@ -16,18 +16,23 @@ package olric
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
-func TestDTopic_Publish(t *testing.T) {
-	c := newTestCluster(nil)
-	defer c.teardown()
-
-	db, err := c.newDB()
+func TestDTopic_PublishStandalone(t *testing.T) {
+	db, err := newDB(testSingleReplicaConfig())
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
+	defer func() {
+		err = db.Shutdown(context.Background())
+		if err != nil {
+			db.log.V(2).Printf("[ERROR] Failed to shutdown Olric: %v", err)
+		}
+	}()
 
 	dt, err := db.NewDTopic("my-topic")
 	if err != nil {
@@ -66,13 +71,16 @@ func TestDTopic_Publish(t *testing.T) {
 }
 
 func TestDTopic_RemoveListener(t *testing.T) {
-	c := newTestCluster(nil)
-	defer c.teardown()
-
-	db, err := c.newDB()
+	db, err := newDB(testSingleReplicaConfig())
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
+	defer func() {
+		err = db.Shutdown(context.Background())
+		if err != nil {
+			db.log.V(2).Printf("[ERROR] Failed to shutdown Olric: %v", err)
+		}
+	}()
 
 	dt, err := db.NewDTopic("my-topic")
 	if err != nil {
@@ -87,5 +95,133 @@ func TestDTopic_RemoveListener(t *testing.T) {
 	err = dt.RemoveListener(regID)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
+	}
+}
+
+func TestDTopic_PublishCluster(t *testing.T) {
+	c := newTestCluster(nil)
+	defer c.teardown()
+
+	db1, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	db2, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	// Add listener
+
+	dt, err := db1.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	var count int32
+	ctx, cancel := context.WithCancel(context.Background())
+	onMessage := func(msg TopicMessage) {
+		defer cancel()
+		if msg.Message.(string) != "message" {
+			t.Fatalf("Expected nil. Got: %v", err)
+		}
+		atomic.AddInt32(&count, 1)
+	}
+
+	regID, err := dt.AddListener(onMessage)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	defer func() {
+		err = dt.RemoveListener(regID)
+		if err != nil {
+			t.Fatalf("Expected nil. Got: %v", err)
+		}
+	}()
+
+	// Publish
+
+	dt2, err := db2.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	err = dt2.Publish("message")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		if atomic.LoadInt32(&count) != 1 {
+			t.Fatalf("Expected count 1. Got: %d", atomic.LoadInt32(&count))
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Failed to call onMessage function")
+	}
+}
+
+func TestDTopic_RemoveListenerNotFound(t *testing.T) {
+	db, err := newDB(testSingleReplicaConfig())
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	defer func() {
+		err = db.Shutdown(context.Background())
+		if err != nil {
+			db.log.V(2).Printf("[ERROR] Failed to shutdown Olric: %v", err)
+		}
+	}()
+
+	dt, err := db.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	err = dt.RemoveListener(1231)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Expected ErrInvalidArgument. Got: %v", err)
+	}
+}
+
+func TestDTopic_Destroy(t *testing.T) {
+	c := newTestCluster(nil)
+	defer c.teardown()
+
+	dbOne, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	dbTwo, err := c.newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	// Add listener
+	dtOne, err := dbOne.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	onMessage := func(msg TopicMessage) {}
+	regID, err := dtOne.AddListener(onMessage)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	dtTwo, err := dbTwo.NewDTopic("my-topic")
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	err = dtTwo.Destroy()
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+
+	err = dtOne.RemoveListener(regID)
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Expected ErrInvalidArgument. Got: %v", err)
 	}
 }
