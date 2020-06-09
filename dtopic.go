@@ -21,6 +21,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/buraksezer/olric/internal/discovery"
 	"github.com/buraksezer/olric/internal/protocol"
@@ -28,8 +29,11 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
-type TopicMessage struct {
-	Message interface{}
+// DTopicMessage denotes a distributed topic message.
+type DTopicMessage struct {
+	Message       interface{}
+	PublisherAddr string
+	PublishedAt   int64
 }
 
 // DTopic implements a distributed topic to deliver messages between clients and Olric nodes.
@@ -40,7 +44,7 @@ type DTopic struct {
 }
 
 type listener struct {
-	f func(message TopicMessage)
+	f func(message DTopicMessage)
 }
 
 type listeners struct {
@@ -64,7 +68,7 @@ func newDTopic(ctx context.Context) *dtopic {
 	}
 }
 
-func (d *dtopic) addListener(topic string, f func(TopicMessage)) (uint64, error) {
+func (d *dtopic) addListener(topic string, f func(DTopicMessage)) (uint64, error) {
 	d.topics.mtx.Lock()
 	defer d.topics.mtx.Unlock()
 
@@ -102,7 +106,7 @@ func (d *dtopic) removeListener(topic string, regID uint64) error {
 	return nil
 }
 
-func (d *dtopic) dispatch(topic string, msg interface{}) error {
+func (d *dtopic) dispatch(topic string, msg *DTopicMessage) error {
 	d.topics.mtx.RLock()
 	defer d.topics.mtx.RUnlock()
 
@@ -110,10 +114,6 @@ func (d *dtopic) dispatch(topic string, msg interface{}) error {
 	if !ok {
 		// there is no listener for this topic on this node.
 		return fmt.Errorf("topic not found: %s: %w", topic, ErrInvalidArgument)
-	}
-
-	tm := TopicMessage{
-		Message: msg,
 	}
 
 	var wg sync.WaitGroup
@@ -126,10 +126,12 @@ func (d *dtopic) dispatch(topic string, msg interface{}) error {
 		}
 
 		wg.Add(1)
-		go func(f func(message TopicMessage)) {
+		// Dereference the pointer and make a copy of DTopicMessage for every listener.
+		m := *msg
+		go func(f func(message DTopicMessage)) {
 			defer wg.Done()
 			defer sem.Release(1)
-			f(tm)
+			f(m)
 		}(ll.f)
 	}
 	wg.Wait()
@@ -160,28 +162,29 @@ func (db *Olric) NewDTopic(name string) (*DTopic, error) {
 }
 
 func (db *Olric) publishDTopicMessageOperation(req *protocol.Message) *protocol.Message {
-	msg, err := db.unmarshalValue(req.Value)
+	rawmsg, err := db.unmarshalValue(req.Value)
 	if err != nil {
 		req.Error(protocol.StatusInternalServerError, err)
 	}
+	msg, ok := rawmsg.(DTopicMessage)
+	if !ok {
+		req.Error(protocol.StatusInternalServerError, "invalid distributed topic message received")
+	}
+
 	// req.DMap is a wrong name here. We will refactor the protocol and use a generic name.
-	err = db.dtopic.dispatch(req.DMap, msg)
+	err = db.dtopic.dispatch(req.DMap, &msg)
 	if err != nil {
 		req.Error(protocol.StatusInternalServerError, err)
 	}
 	return req.Success()
 }
 
-func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic string, data []byte, sem *semaphore.Weighted) error {
+func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic string, msg *DTopicMessage, sem *semaphore.Weighted) error {
 	defer db.wg.Done()
 	defer sem.Release(1)
 
 	if hostCmp(member, db.this) {
 		// Dispatch messages in this process.
-		var msg interface{}
-		if err := db.serializer.Unmarshal(data, &msg); err != nil {
-			return err
-		}
 		err := db.dtopic.dispatch(topic, msg)
 		if err != nil {
 			db.log.V(6).Printf("[ERROR] Failed to dispatch message on this node: %v", err)
@@ -192,12 +195,16 @@ func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic strin
 		}
 	}
 
+	data, err := db.serializer.Marshal(*msg)
+	if err != nil {
+		return err
+	}
 	// TODO: We need to find a better name for DMap in this struct.
 	req := &protocol.Message{
 		DMap:  topic,
 		Value: data,
 	}
-	_, err := db.requestTo(member.String(), protocol.OpPublishDTopicMessage, req)
+	_, err = db.requestTo(member.String(), protocol.OpPublishDTopicMessage, req)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Failed to publish message to %s: %v", member, err)
 		return err
@@ -205,7 +212,7 @@ func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic strin
 	return nil
 }
 
-func (db *Olric) publishDTopicMessage(topic string, data []byte) error {
+func (db *Olric) publishDTopicMessage(topic string, msg *DTopicMessage) error {
 	db.members.mtx.RLock()
 	defer db.members.mtx.RUnlock()
 
@@ -228,7 +235,7 @@ func (db *Olric) publishDTopicMessage(topic string, data []byte) error {
 		db.wg.Add(1)
 		member := member // https://golang.org/doc/faq#closures_and_goroutines
 		g.Go(func() error {
-			return db.publishDTopicMessageToAddr(member, topic, data, sem)
+			return db.publishDTopicMessageToAddr(member, topic, msg, sem)
 		})
 	}
 	// Wait blocks until all function calls from the Go method have returned,
@@ -238,16 +245,17 @@ func (db *Olric) publishDTopicMessage(topic string, data []byte) error {
 
 // Publish publishes the given message to listeners of the topic. Message order and delivery are not guaranteed.
 func (dt *DTopic) Publish(msg interface{}) error {
-	data, err := dt.db.serializer.Marshal(msg)
-	if err != nil {
-		return err
+	tm := &DTopicMessage{
+		Message:       msg,
+		PublisherAddr: dt.db.this.String(),
+		PublishedAt:   time.Now().UnixNano(),
 	}
-	return dt.db.publishDTopicMessage(dt.name, data)
+	return dt.db.publishDTopicMessage(dt.name, tm)
 }
 
 // AddListener adds a new listener for the topic. Returns a registration ID or an non-nil error.
 // Registered functions are run by parallel.
-func (dt *DTopic) AddListener(f func(TopicMessage)) (uint64, error) {
+func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 	return dt.db.dtopic.addListener(dt.name, f)
 }
 
