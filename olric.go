@@ -60,6 +60,8 @@ var (
 	ErrBadRequest = errors.New("bad request")
 
 	ErrServerGone = errors.New("server is gone")
+
+	ErrInvalidArgument = errors.New("invalid argument")
 )
 
 // ReleaseVersion is the current stable version of Olric
@@ -199,7 +201,7 @@ func New(c *config.Config) (*Olric, error) {
 		operations: make(map[protocol.OpCode]func(*protocol.Message) *protocol.Message),
 		server:     transport.NewServer(c.BindAddr, c.BindPort, c.KeepAlivePeriod, flogger),
 		members:    members{m: make(map[uint64]discovery.Member)},
-		dtopic:     newDTopic(),
+		dtopic:     newDTopic(ctx),
 		started:    c.Started,
 	}
 
@@ -445,6 +447,7 @@ func (db *Olric) registerOperations() {
 
 	// Distributed Topic
 	db.operations[protocol.OpPublishDTopicMessage] = db.publishDTopicMessageOperation
+	db.operations[protocol.OpDestroyDTopic] = db.destroyDTopicOperation
 }
 
 func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Message {

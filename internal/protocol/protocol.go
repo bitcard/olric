@@ -77,6 +77,7 @@ const (
 	OpQuery
 	OpLocalQuery
 	OpPublishDTopicMessage
+	OpDestroyDTopic
 )
 
 type StatusCode uint8
