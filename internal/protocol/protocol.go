@@ -27,7 +27,7 @@ import (
 )
 
 // pool is good for recycling memory while reading messages from the socket.
-var pool *bufpool.BufPool = bufpool.New()
+var pool = bufpool.New()
 
 // MagicCode defines an unique code to distinguish a request message from a response message in Olric Binary Protocol.
 type MagicCode uint8
@@ -81,6 +81,9 @@ const (
 	OpDTopicPublish
 	OpDTopicAddListener
 	OpDTopicRemoveListener
+	OpCreateStream
+	OpStreamCreated
+	OpCloseStream
 )
 
 type StatusCode uint8
@@ -122,6 +125,27 @@ type Message struct {
 	DMap   string      // [m..(n-1)] DMap (as needed, length in Header)
 	Key    string      // [n..(x-1)] Key (as needed, length in Header)
 	Value  []byte      // [x..y] Value (as needed, length in Header)
+	conn   io.ReadWriter
+}
+
+func (m *Message) SetConn(conn io.ReadWriter) {
+	m.conn = conn
+}
+
+func (m *Message) GetConn() (io.ReadWriter, error) {
+	if m.conn == nil {
+		return nil, fmt.Errorf("conn is nil")
+	}
+	return m.conn, nil
+}
+
+func NewRequest(opcode OpCode) *Message {
+	return &Message{
+		Header: Header{
+			Magic: MagicReq,
+			Op:    opcode,
+		},
+	}
 }
 
 // LockWithTimeoutExtra defines extra values for this operation.
@@ -189,6 +213,10 @@ type QueryExtra struct {
 	PartID uint64
 }
 
+type StreamCreatedExtra struct {
+	StreamID uint64
+}
+
 // ErrConnClosed means that the underlying TCP connection has been closed
 // by the client or operating system.
 var ErrConnClosed = errors.New("connection closed")
@@ -251,6 +279,10 @@ func loadExtras(raw []byte, op OpCode) (interface{}, error) {
 		return extra, err
 	case OpQuery:
 		extra := QueryExtra{}
+		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
+		return extra, err
+	case OpStreamCreated:
+		extra := StreamCreatedExtra{}
 		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
 		return extra, err
 	default:

@@ -129,6 +129,9 @@ type Olric struct {
 	// Dispatch topic messages
 	dtopic *dtopic
 
+	// Bidirectional stream sockets for Olric clients and nodes.
+	streams *streams
+
 	// Structures for flow control
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -448,6 +451,9 @@ func (db *Olric) registerOperations() {
 	// Distributed Topic
 	db.operations[protocol.OpPublishDTopicMessage] = db.publishDTopicMessageOperation
 	db.operations[protocol.OpDestroyDTopic] = db.destroyDTopicOperation
+
+	// Bidirectional communication channel for clients and cluster members.
+	db.operations[protocol.OpCreateStream] = db.createStreamOperation
 }
 
 func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Message {

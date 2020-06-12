@@ -81,6 +81,9 @@ func (s *Server) processRequest(req *protocol.Message, conn io.ReadWriter, connS
 	// Mark connection as idle before start waiting a new request
 	defer atomic.StoreUint32(connStatus, idleConn)
 
+	// Conn is required for streams
+	req.SetConn(conn)
+
 	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
 	resp := s.dispatcher(req)
 	err = resp.Write(conn)
