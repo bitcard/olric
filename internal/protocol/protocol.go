@@ -83,7 +83,7 @@ const (
 	OpDTopicRemoveListener
 	OpCreateStream
 	OpStreamCreated
-	OpCloseStream
+	OpStreamClosed
 )
 
 type StatusCode uint8

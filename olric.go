@@ -205,6 +205,7 @@ func New(c *config.Config) (*Olric, error) {
 		server:     transport.NewServer(c.BindAddr, c.BindPort, c.KeepAlivePeriod, flogger),
 		members:    members{m: make(map[uint64]discovery.Member)},
 		dtopic:     newDTopic(ctx),
+		streams:    &streams{m: make(map[uint64]*stream)},
 		started:    c.Started,
 	}
 
@@ -640,6 +641,16 @@ func (db *Olric) Shutdown(ctx context.Context) error {
 	db.cancel()
 
 	var result error
+
+	db.streams.mu.RLock()
+	db.log.V(2).Printf("[INFO] Closing active streams")
+	for streamID, str := range db.streams.m {
+		if err := str.close(); err != nil {
+			result = multierror.Append(result, fmt.Errorf("streamID: %d: %w", streamID, err))
+		}
+	}
+	db.streams.mu.RUnlock()
+
 	if err := db.server.Shutdown(ctx); err != nil {
 		result = multierror.Append(result, err)
 	}

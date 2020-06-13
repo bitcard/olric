@@ -1,19 +1,38 @@
+// Copyright 2018-2020 Burak Sezer
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package olric
 
 import (
 	"context"
-	"github.com/buraksezer/olric/internal/protocol"
+	"fmt"
 	"io"
 	"math/rand"
 	"sync"
+
+	"github.com/buraksezer/olric/internal/protocol"
 )
 
+// streams maps StreamIDs to streams
 type streams struct {
 	mu sync.RWMutex
 
 	m map[uint64]*stream
 }
 
+// streams provides a bidirectional communication channel between Olric nodes and clients. It can also be used
+// for node-to-node communication.
 type stream struct {
 	read   chan *protocol.Message
 	write  chan *protocol.Message
@@ -21,8 +40,17 @@ type stream struct {
 	cancel context.CancelFunc
 }
 
-func (s *stream ) close() {
-	s.cancel()
+// close sends OpStreamClosed command to other side of the channel and cancels underlying context.
+func (s *stream) close() error {
+	defer s.cancel()
+
+	req := protocol.NewRequest(protocol.OpStreamClosed)
+	select {
+	case s.write <- req:
+		return nil
+	default:
+	}
+	return fmt.Errorf("impossible to send StreamClosed message: channel busy")
 }
 
 func (db *Olric) readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, errCh chan<- error) {
@@ -45,10 +73,10 @@ func (db *Olric) createStreamOperation(req *protocol.Message) *protocol.Message 
 		return req.Error(protocol.StatusInternalServerError, err)
 	}
 
+	// Now, we have a TCP socket here.
 	streamID := rand.Uint64()
 	ctx, cancel := context.WithCancel(context.Background())
 	db.streams.mu.Lock()
-	// TODO: Direction of channels
 	s := &stream{
 		read:   make(chan *protocol.Message, 1),
 		write:  make(chan *protocol.Message, 1),
@@ -78,8 +106,10 @@ loop:
 	for {
 		select {
 		case <-ctx.Done():
+			// close method is called
 			break loop
 		case <-db.ctx.Done():
+			// server is gone
 			break loop
 		case msg := <-s.write:
 			err = msg.Write(conn)
@@ -90,6 +120,5 @@ loop:
 			s.read <- buf
 		}
 	}
-
 	return req.Success()
 }
