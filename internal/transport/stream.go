@@ -36,6 +36,7 @@ func readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, errCh chan<-
 	}
 }
 
+// CreateStream creates a new Stream connection which provides a bidirectional communication channel between Olric nodes and clients.
 func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *protocol.Message, write <-chan *protocol.Message) error {
 	cpool, err := c.getPool(addr)
 	if err != nil {
