@@ -30,6 +30,8 @@ var errTooManyListener = errors.New("stream has too many listeners")
 const maxListeners = 1024
 
 type listener struct {
+	read  chan *protocol.Message
+	write chan *protocol.Message
 }
 
 // streams provides a bidirectional communication channel between Olric nodes and clients. It can also be used
@@ -57,6 +59,12 @@ func (c *Client) listenStream(s *stream) {
 
 	for {
 		select {
+		case msg := <-s.read:
+			s.mu.RLock()
+			for _, l := range s.listeners {
+				l.read <- msg
+			}
+			s.mu.RUnlock()
 		case <-s.ctx.Done():
 			return
 		}
@@ -66,11 +74,12 @@ func (c *Client) listenStream(s *stream) {
 func (c *Client) createStream() (*stream, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{
-		read:   make(chan *protocol.Message, 1),
-		write:  make(chan *protocol.Message, 1),
-		errCh:  make(chan error, 1),
-		ctx:    ctx,
-		cancel: cancel,
+		listeners: make(map[uint64]*listener),
+		read:      make(chan *protocol.Message, 1),
+		write:     make(chan *protocol.Message, 1),
+		errCh:     make(chan error, 1),
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 
 	// Pick a random addr to dial
@@ -104,6 +113,19 @@ func (c *Client) createStream() (*stream, error) {
 	return s, nil
 }
 
+func (c *Client) writeToStream(s *stream, l *listener) {
+	defer c.wg.Done()
+
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case msg := <-l.write:
+			s.write <- msg
+		}
+	}
+}
+
 func (c *Client) addStreamListener(l *listener) (uint64, error) {
 	c.streams.mu.Lock()
 	defer c.streams.mu.Unlock()
@@ -117,6 +139,10 @@ func (c *Client) addStreamListener(l *listener) (uint64, error) {
 		}
 		listenerID := rand.Uint64()
 		s.listeners[listenerID] = l
+
+		c.wg.Add(1)
+		go c.writeToStream(s, l)
+
 		return listenerID, nil
 	}
 

@@ -98,8 +98,7 @@ func TestStream_EchoMessage(t *testing.T) {
 		s, _ := db.streams.m[streamID]
 		db.streams.mu.RUnlock()
 
-		echoed := <-s.read
-		s.write <- echoed
+		s.write <- <-s.read
 	}
 
 loop:
