@@ -15,6 +15,7 @@
 package client
 
 import (
+	"github.com/buraksezer/olric"
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
@@ -46,7 +47,6 @@ func (d *DTopic) Publish(msg interface{}) error {
 	return checkStatusCode(resp)
 }
 
-/*
 func (d *DTopic) AddListener(f func(olric.DTopicMessage)) (int64, error) {
 	m := &protocol.Message{
 		DMap: d.name,
@@ -55,9 +55,11 @@ func (d *DTopic) AddListener(f func(olric.DTopicMessage)) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return regID, checkStatusCode(resp)
+	// StreamID -
+	return 0, checkStatusCode(resp)
 }
 
+/*
 func (d *DTopic) RemoveListener(regID int64) error {
 	m := &protocol.Message{
 		DMap: d.name,

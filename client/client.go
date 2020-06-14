@@ -17,6 +17,7 @@ package client // import "github.com/buraksezer/olric/client"
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/buraksezer/olric"
@@ -33,6 +34,8 @@ type Client struct {
 	config     *Config
 	client     *transport.Client
 	serializer serializer.Serializer
+	streams    *streams
+	wg         sync.WaitGroup
 }
 
 // Config includes configuration parameters for the Client.
@@ -68,6 +71,7 @@ func New(c *Config) (*Client, error) {
 		config:     c,
 		client:     transport.NewClient(cc),
 		serializer: c.Serializer,
+		streams:    &streams{m: make(map[uint64]*stream)},
 	}, nil
 }
 
@@ -100,8 +104,15 @@ func (c *Client) Stats(addr string) (stats.Stats, error) {
 }
 
 // Close cancels underlying context and cancels ongoing requests.
-func (c *Client) Close() {
+func (c *Client) Close()  {
+	c.streams.mu.RLock()
+	defer c.streams.mu.RUnlock()
+
+	for _, s := range c.streams.m {
+		s.cancel()
+	}
 	c.client.Close()
+	c.wg.Wait()
 }
 
 // NewDMap creates and returns a new DMap instance to access DMaps on the cluster.
