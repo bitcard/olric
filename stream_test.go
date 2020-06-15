@@ -110,7 +110,7 @@ loop:
 				// Stream is created. Now, we are able to do write or read on this bidirectional channel.
 				//
 				// Send a test message
-				req := protocol.NewRequest(protocol.OpPut)
+				req := protocol.NewMessage(protocol.OpPut)
 				req.DMap = "echo-test-dmap"
 				req.Key = "echo-test-key"
 				req.Value = []byte("echo-test-value")

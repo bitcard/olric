@@ -43,7 +43,7 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *pro
 		return err
 	}
 
-	req := protocol.NewRequest(protocol.OpCreateStream)
+	req := protocol.NewMessage(protocol.OpCreateStream)
 	conn, err := cpool.Get()
 	if err != nil {
 		return err

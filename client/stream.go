@@ -25,9 +25,14 @@ import (
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
+// About the hack: This looks weird, but I need to mock client.CreateStream function to test streams
+// independently. I don't want to use a mocking library for this. So I created a function named
+// createStreamFunction and I overwrite that function in test.
+var createStreamFunction func(context.Context, string, chan<- *protocol.Message, <-chan *protocol.Message) error
+
 var errTooManyListener = errors.New("stream has too many listeners")
 
-const maxListeners = 1024
+const maxListenersPerStream = 1024
 
 type listener struct {
 	read  chan *protocol.Message
@@ -61,8 +66,13 @@ func (c *Client) listenStream(s *stream) {
 		select {
 		case msg := <-s.read:
 			s.mu.RLock()
-			for _, l := range s.listeners {
-				l.read <- msg
+			for id, l := range s.listeners {
+				if msg.Op != protocol.OpStreamMessage {
+					continue
+				}
+				if msg.Extra.(protocol.StreamMessageExtra).ListenerID == id {
+					l.read <- msg
+				}
 			}
 			s.mu.RUnlock()
 		case <-s.ctx.Done():
@@ -92,7 +102,7 @@ func (c *Client) createStream() (*stream, error) {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		s.errCh <- c.client.CreateStream(ctx, addr, s.read, s.write)
+		s.errCh <- createStreamFunction(ctx, addr, s.read, s.write)
 	}()
 
 	select {
@@ -134,7 +144,7 @@ func (c *Client) addStreamListener(l *listener) (uint64, error) {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 
-		if len(s.listeners) >= maxListeners {
+		if len(s.listeners) >= c.config.MaxListenersPerStream {
 			return 0, errTooManyListener
 		}
 		listenerID := rand.Uint64()

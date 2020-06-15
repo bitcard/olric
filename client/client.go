@@ -40,11 +40,12 @@ type Client struct {
 
 // Config includes configuration parameters for the Client.
 type Config struct {
-	Addrs       []string
-	Serializer  serializer.Serializer
-	DialTimeout time.Duration
-	KeepAlive   time.Duration
-	MaxConn     int
+	Addrs                 []string
+	Serializer            serializer.Serializer
+	DialTimeout           time.Duration
+	KeepAlive             time.Duration
+	MaxConn               int
+	MaxListenersPerStream int
 }
 
 // New returns a new Client instance. The second parameter is serializer, it can be nil.
@@ -61,15 +62,23 @@ func New(c *Config) (*Client, error) {
 	if c.MaxConn == 0 {
 		c.MaxConn = 1
 	}
+	if c.MaxListenersPerStream <= 0 {
+		c.MaxListenersPerStream = maxListenersPerStream
+	}
 	cc := &transport.ClientConfig{
 		Addrs:       c.Addrs,
 		DialTimeout: c.DialTimeout,
 		KeepAlive:   c.KeepAlive,
 		MaxConn:     c.MaxConn,
 	}
+	client := transport.NewClient(cc)
+	// About the hack: This looks weird, but I need to mock client.CreateStream function to test streams
+	// independently. I don't want to use a mocking library for this. So I created a function named
+	// createStreamFunction and I overwrite that function in test.
+	createStreamFunction = client.CreateStream
 	return &Client{
 		config:     c,
-		client:     transport.NewClient(cc),
+		client:     client,
 		serializer: c.Serializer,
 		streams:    &streams{m: make(map[uint64]*stream)},
 	}, nil
@@ -104,7 +113,7 @@ func (c *Client) Stats(addr string) (stats.Stats, error) {
 }
 
 // Close cancels underlying context and cancels ongoing requests.
-func (c *Client) Close()  {
+func (c *Client) Close() {
 	c.streams.mu.RLock()
 	defer c.streams.mu.RUnlock()
 

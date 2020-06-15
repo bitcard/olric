@@ -44,7 +44,7 @@ type stream struct {
 func (s *stream) close() error {
 	defer s.cancel()
 
-	req := protocol.NewRequest(protocol.OpStreamClosed)
+	req := protocol.NewMessage(protocol.OpStreamClosed)
 	select {
 	case s.write <- req:
 		return nil
@@ -97,7 +97,7 @@ func (db *Olric) createStreamOperation(req *protocol.Message) *protocol.Message 
 		db.streams.mu.Unlock()
 	}()
 
-	rq := protocol.NewRequest(protocol.OpStreamCreated)
+	rq := protocol.NewMessage(protocol.OpStreamCreated)
 	rq.Extra = protocol.StreamCreatedExtra{
 		StreamID: streamID,
 	}

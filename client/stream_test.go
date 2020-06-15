@@ -15,13 +15,32 @@
 package client
 
 import (
+	"bytes"
 	"context"
-	"fmt"
-	"github.com/buraksezer/olric/internal/protocol"
+	"math/rand"
 	"testing"
+	"time"
+
+	"github.com/buraksezer/olric/internal/protocol"
 )
 
-func TestClient_Stream(t *testing.T) {
+func mockCreateStream(ctx context.Context, _ string, read chan<- *protocol.Message, write <-chan *protocol.Message) error {
+	rq := protocol.NewMessage(protocol.OpStreamCreated)
+	rq.Extra = protocol.StreamCreatedExtra{
+		StreamID: rand.Uint64(),
+	}
+	read <- rq
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case msg := <-write:
+			read <- msg
+		}
+	}
+}
+
+func TestStream_EchoListener(t *testing.T) {
 	db, done, err := newDB()
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
@@ -38,18 +57,155 @@ func TestClient_Stream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
+	// Mock transport.Client.CreateStream
+	createStreamFunction = mockCreateStream
 
 	l := &listener{
-		read: make(chan *protocol.Message, 1),
+		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	_, err = c.addStreamListener(l)
+	listenerID, err := c.addStreamListener(l)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
-	req := protocol.NewRequest(protocol.OpPut)
+	req := protocol.NewStreamMessage(listenerID)
+	req.DMap = "mydmap"
+	req.Key = "mykey"
+	req.Value = []byte("myvalue")
 	l.write <- req
 
-	msg := <-l.read
-	fmt.Println(msg)
+	select {
+	case msg := <-l.read:
+		if msg.DMap != "mydmap" {
+			t.Fatalf("Expected DMap: %s. Got: %s", req.DMap, msg.DMap)
+		}
+		if msg.Key != "mykey" {
+			t.Fatalf("Expected Key: %s. Got: %s", req.Key, msg.Key)
+		}
+		if !bytes.Equal(msg.Value, []byte("myvalue")) {
+			t.Fatalf("Expected Value: %s. Got: %s", string(req.Value), msg.Value)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatalf("No message received from listener")
+	}
+}
+
+func TestStream_CreateNewStream(t *testing.T) {
+	db, done, err := newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	defer func() {
+		serr := db.Shutdown(context.Background())
+		if serr != nil {
+			t.Fatalf("Expected nil. Got %v", serr)
+		}
+		<-done
+	}()
+	modifiedTestConfig := *testConfig
+	modifiedTestConfig.MaxListenersPerStream = 1
+	c, err := New(&modifiedTestConfig)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	// Mock transport.Client.CreateStream
+	createStreamFunction = mockCreateStream
+
+	l1 := &listener{
+		read:  make(chan *protocol.Message, 1),
+		write: make(chan *protocol.Message, 1),
+	}
+	_, err = c.addStreamListener(l1)
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	l2 := &listener{
+		read:  make(chan *protocol.Message, 1),
+		write: make(chan *protocol.Message, 1),
+	}
+	_, err = c.addStreamListener(l2)
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	c.streams.mu.RLock()
+	defer c.streams.mu.RUnlock()
+	if len(c.streams.m) != 2 {
+		t.Fatalf("Expected stream count is 2. Got: %d", len(c.streams.m))
+	}
+}
+
+func TestStream_MultipleListener(t *testing.T) {
+	db, done, err := newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	defer func() {
+		serr := db.Shutdown(context.Background())
+		if serr != nil {
+			t.Fatalf("Expected nil. Got %v", serr)
+		}
+		<-done
+	}()
+	c, err := New(testConfig)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	// Mock transport.Client.CreateStream
+	createStreamFunction = mockCreateStream
+
+	listeners := make(map[uint64]*listener)
+
+	l1 := &listener{
+		read:  make(chan *protocol.Message, 1),
+		write: make(chan *protocol.Message, 1),
+	}
+	listenerID1, err := c.addStreamListener(l1)
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	listeners[listenerID1] = l1
+
+	l2 := &listener{
+		read:  make(chan *protocol.Message, 1),
+		write: make(chan *protocol.Message, 1),
+	}
+	listenerID2, err := c.addStreamListener(l2)
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	listeners[listenerID2] = l2
+
+	c.streams.mu.RLock()
+	defer c.streams.mu.RUnlock()
+	if len(c.streams.m) != 1 {
+		t.Fatalf("Expected stream count is 1. Got: %d", len(c.streams.m))
+	}
+
+	for id, l := range listeners {
+		req := protocol.NewStreamMessage(id)
+		req.DMap = "mydmap"
+		req.Key = "mykey"
+		req.Value = []byte("myvalue")
+
+		l.write <- req
+
+		select {
+		case msg := <-l.read:
+			if msg.DMap != "mydmap" {
+				t.Fatalf("Expected DMap: %s. Got: %s", req.DMap, msg.DMap)
+			}
+			if msg.Key != "mykey" {
+				t.Fatalf("Expected Key: %s. Got: %s", req.Key, msg.Key)
+			}
+			if !bytes.Equal(msg.Value, []byte("myvalue")) {
+				t.Fatalf("Expected Value: %s. Got: %s", string(req.Value), msg.Value)
+			}
+			listenerID := msg.Extra.(protocol.StreamMessageExtra).ListenerID
+			if listenerID != id {
+				t.Fatalf("Expected ListenerID: %d. Got: %d", id, listenerID)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("No message received from listener")
+		}
+	}
 }
