@@ -84,6 +84,7 @@ const (
 	OpCreateStream
 	OpStreamCreated
 	OpStreamClosed
+	OpStreamMessage
 )
 
 type StatusCode uint8
@@ -139,13 +140,21 @@ func (m *Message) GetConn() (io.ReadWriter, error) {
 	return m.conn, nil
 }
 
-func NewRequest(opcode OpCode) *Message {
+func NewMessage(opcode OpCode) *Message {
 	return &Message{
 		Header: Header{
 			Magic: MagicReq,
 			Op:    opcode,
 		},
 	}
+}
+
+func NewStreamMessage(listenerID uint64) *Message {
+	m := NewMessage(OpStreamMessage)
+	m.Extra = StreamMessageExtra{
+		ListenerID: listenerID,
+	}
+	return m
 }
 
 // LockWithTimeoutExtra defines extra values for this operation.
@@ -217,6 +226,10 @@ type StreamCreatedExtra struct {
 	StreamID uint64
 }
 
+type StreamMessageExtra struct {
+	ListenerID uint64
+}
+
 // ErrConnClosed means that the underlying TCP connection has been closed
 // by the client or operating system.
 var ErrConnClosed = errors.New("connection closed")
@@ -283,6 +296,10 @@ func loadExtras(raw []byte, op OpCode) (interface{}, error) {
 		return extra, err
 	case OpStreamCreated:
 		extra := StreamCreatedExtra{}
+		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
+		return extra, err
+	case OpStreamMessage:
+		extra := StreamMessageExtra{}
 		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
 		return extra, err
 	default:
