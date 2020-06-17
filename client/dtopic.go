@@ -31,32 +31,60 @@ func (c *Client) NewDTopic(name string) *DTopic {
 	}
 }
 
-func (d *DTopic) Publish(msg interface{}) error {
-	data, err := d.serializer.Marshal(msg)
+func (dt *DTopic) Publish(msg interface{}) error {
+	data, err := dt.serializer.Marshal(msg)
 	if err != nil {
 		return err
 	}
 	m := &protocol.Message{
-		DMap:  d.name,
+		DMap:  dt.name,
 		Value: data,
 	}
-	resp, err := d.client.Request(protocol.OpDTopicPublish, m)
+	resp, err := dt.client.Request(protocol.OpDTopicPublish, m)
 	if err != nil {
 		return err
 	}
 	return checkStatusCode(resp)
 }
 
-func (d *DTopic) AddListener(f func(olric.DTopicMessage)) (int64, error) {
-	m := &protocol.Message{
-		DMap: d.name,
+func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
+	l := &listener{
+		read: make(chan *protocol.Message, 1),
+		write: make(chan *protocol.Message, 1),
 	}
-	resp, err := d.client.Request(protocol.OpDTopicAddListener, m)
+	streamID, listenerID, err := dt.addStreamListener(l)
 	if err != nil {
 		return 0, err
 	}
-	// StreamID -
-	return 0, checkStatusCode(resp)
+	// TODO: Remove this listener if any of the steps return an error.
+
+	m := &protocol.Message{
+		DMap: dt.name,
+		Extra: protocol.DTopicAddListenerExtra{
+			ListenerID: listenerID,
+			StreamID: streamID,
+		},
+	}
+	resp, err := dt.client.Request(protocol.OpDTopicAddListener, m)
+	if err != nil {
+		return 0, err
+	}
+	err = checkStatusCode(resp)
+	if err != nil {
+		return 0, err
+	}
+	go func(l *listener) {
+		// TODO: Graceful shutdown
+		select {
+		case req := <-l.read:
+			msg, err := dt.unmarshalValue(req.Value)
+			if err != nil {
+				// TODO: Log this
+			}
+			f(msg.(olric.DTopicMessage))
+		}
+	}(l)
+	return listenerID, nil
 }
 
 /*

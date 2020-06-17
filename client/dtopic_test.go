@@ -19,7 +19,7 @@ import (
 	"testing"
 )
 
-func TestClient_OpenByteStream(t *testing.T) {
+func TestClient_DTopicPublish(t *testing.T) {
 	db, done, err := newDB()
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
@@ -36,23 +36,9 @@ func TestClient_OpenByteStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-
-	name := "mymap"
-	key, value := "my-key", "my-value"
-	err = c.NewDMap(name).Put(key, value)
+	dt := c.NewDTopic("my-dtopic")
+	err = dt.Publish("my-message")
 	if err != nil {
-		t.Fatalf("Expected nil. Got: %v", err)
-	}
-
-	dm, err := db.NewDMap(name)
-	if err != nil {
-		t.Fatalf("Expected nil. Got: %v", err)
-	}
-	val, err := dm.Get(key)
-	if err != nil {
-		t.Fatalf("Expected nil. Got: %v", err)
-	}
-	if val.(string) != value {
-		t.Fatalf("Expected value %s. Got: %s", val.(string), value)
+		t.Errorf("Expected nil. Got: %s", err)
 	}
 }

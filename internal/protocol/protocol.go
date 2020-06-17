@@ -230,6 +230,11 @@ type StreamMessageExtra struct {
 	ListenerID uint64
 }
 
+type DTopicAddListenerExtra struct {
+	StreamID uint64
+	ListenerID uint64
+}
+
 // ErrConnClosed means that the underlying TCP connection has been closed
 // by the client or operating system.
 var ErrConnClosed = errors.New("connection closed")
