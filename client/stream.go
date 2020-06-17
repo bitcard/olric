@@ -81,7 +81,7 @@ func (c *Client) listenStream(s *stream) {
 	}
 }
 
-func (c *Client) createStream() (*stream, error) {
+func (c *Client) createStream() (uint64, *stream, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{
 		listeners: make(map[uint64]*listener),
@@ -94,7 +94,7 @@ func (c *Client) createStream() (*stream, error) {
 
 	// Pick a random addr to dial
 	if len(c.config.Addrs) == 0 {
-		return nil, fmt.Errorf("no addr found to dial")
+		return 0, nil, fmt.Errorf("no addr found to dial")
 	}
 	idx := rand.Intn(len(c.config.Addrs))
 	addr := c.config.Addrs[idx]
@@ -107,20 +107,20 @@ func (c *Client) createStream() (*stream, error) {
 
 	select {
 	case err := <-s.errCh:
-		return nil, err
+		return 0, nil, err
 	case msg := <-s.read:
 		if msg.Op != protocol.OpStreamCreated {
-			return nil, fmt.Errorf("server returned OpCode: %d instead of %d", msg.Op, protocol.OpStreamCreated)
+			return 0, nil, fmt.Errorf("server returned OpCode: %d instead of %d", msg.Op, protocol.OpStreamCreated)
 		}
 
 		streamID := msg.Extra.(protocol.StreamCreatedExtra).StreamID
 		c.streams.m[streamID] = s
 		c.wg.Add(1)
 		go c.listenStream(s)
+		return streamID, s, nil
 	case <-time.After(5 * time.Second):
-		return nil, fmt.Errorf("streamID could not be retrieved")
+		return 0, nil, fmt.Errorf("streamID could not be retrieved")
 	}
-	return s, nil
 }
 
 func (c *Client) writeToStream(s *stream, l *listener) {
@@ -136,7 +136,7 @@ func (c *Client) writeToStream(s *stream, l *listener) {
 	}
 }
 
-func (c *Client) addStreamListener(l *listener) (uint64, error) {
+func (c *Client) addStreamListener(l *listener) (uint64, uint64, error) {
 	c.streams.mu.Lock()
 	defer c.streams.mu.Unlock()
 
@@ -156,17 +156,21 @@ func (c *Client) addStreamListener(l *listener) (uint64, error) {
 		return listenerID, nil
 	}
 
-	for _, s := range c.streams.m {
+	for streamID, s := range c.streams.m {
 		listenerID, err := add(s)
 		if err == errTooManyListener {
 			continue
 		}
-		return listenerID, err
+		return streamID, listenerID, err
 	}
 
-	s, err := c.createStream()
+	streamID, s, err := c.createStream()
 	if err != nil {
-		return 0, err
+		return 0, 0, err
 	}
-	return add(s)
+	listenerID, err := add(s)
+	if err != nil {
+		return 0, 0, err
+	}
+	return streamID, listenerID, nil
 }

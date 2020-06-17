@@ -64,7 +64,7 @@ func TestStream_EchoListener(t *testing.T) {
 		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	listenerID, err := c.addStreamListener(l)
+	_, listenerID, err := c.addStreamListener(l)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
@@ -115,7 +115,7 @@ func TestStream_CreateNewStream(t *testing.T) {
 		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	_, err = c.addStreamListener(l1)
+	_, _, err = c.addStreamListener(l1)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
@@ -123,7 +123,7 @@ func TestStream_CreateNewStream(t *testing.T) {
 		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	_, err = c.addStreamListener(l2)
+	_, _, err = c.addStreamListener(l2)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
@@ -159,7 +159,7 @@ func TestStream_MultipleListener(t *testing.T) {
 		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	listenerID1, err := c.addStreamListener(l1)
+	_, listenerID1, err := c.addStreamListener(l1)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
@@ -169,7 +169,7 @@ func TestStream_MultipleListener(t *testing.T) {
 		read:  make(chan *protocol.Message, 1),
 		write: make(chan *protocol.Message, 1),
 	}
-	listenerID2, err := c.addStreamListener(l2)
+	_, listenerID2, err := c.addStreamListener(l2)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}

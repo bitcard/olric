@@ -243,6 +243,63 @@ func (db *Olric) publishDTopicMessage(topic string, msg *DTopicMessage) error {
 	return g.Wait()
 }
 
+func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.Message {
+	name := req.DMap
+	streamID := req.Extra.(protocol.DTopicAddListenerExtra).StreamID
+	db.streams.mu.RLock()
+	 _, ok := db.streams.m[streamID]
+	db.streams.mu.RUnlock()
+	if !ok {
+		// TODO: We may want to assign a new status for this kind of errors
+		req.Error(protocol.StatusBadRequest, "StreamID could not be found")
+	}
+
+	// Local listener
+	listenerID := req.Extra.(protocol.DTopicAddListenerExtra).ListenerID
+
+	f := func(msg DTopicMessage) {
+		db.streams.mu.RLock()
+		s, ok := db.streams.m[streamID]
+		db.streams.mu.RUnlock()
+		if !ok {
+			db.log.V(2).Println("[ERROR] Stream could not be found with the given ID: %d", streamID)
+			// TODO: Deregister this listener
+			return
+		}
+		value, err := db.serializer.Marshal(msg)
+		if err != nil {
+			db.log.V(2).Println("[ERROR] Failed to serialize DTopicMessage: %v", err)
+			return
+		}
+		m := protocol.NewStreamMessage(listenerID)
+		m.DMap = name
+		m.Value = value
+		s.write <- m
+	}
+	_, err := db.dtopic.addListener(name, f)
+	if err != nil {
+		return req.Error(protocol.StatusInternalServerError, err)
+	}
+	return req.Success()
+}
+
+func (db *Olric) exDTopicPublishOperation(req *protocol.Message) *protocol.Message {
+	msg, err := db.unmarshalValue(req.Value)
+	if err != nil {
+		return req.Error(protocol.StatusInternalServerError, err)
+	}
+	tm := &DTopicMessage{
+		Message:       msg,
+		PublisherAddr: "",
+		PublishedAt:   time.Now().UnixNano(),
+	}
+	err = db.publishDTopicMessage(req.DMap, tm)
+	if err != nil {
+		return req.Error(protocol.StatusInternalServerError, err)
+	}
+	return req.Success()
+}
+
 // Publish publishes the given message to listeners of the topic. Message order and delivery are not guaranteed.
 func (dt *DTopic) Publish(msg interface{}) error {
 	tm := &DTopicMessage{

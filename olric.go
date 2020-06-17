@@ -452,6 +452,8 @@ func (db *Olric) registerOperations() {
 	// Distributed Topic
 	db.operations[protocol.OpPublishDTopicMessage] = db.publishDTopicMessageOperation
 	db.operations[protocol.OpDestroyDTopic] = db.destroyDTopicOperation
+	db.operations[protocol.OpDTopicPublish] = db.exDTopicPublishOperation
+	db.operations[protocol.OpDTopicAddListener] = db.exDTopicAddListenerOperation
 
 	// Bidirectional communication channel for clients and cluster members.
 	db.operations[protocol.OpCreateStream] = db.createStreamOperation
