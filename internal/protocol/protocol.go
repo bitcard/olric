@@ -231,7 +231,12 @@ type StreamMessageExtra struct {
 }
 
 type DTopicAddListenerExtra struct {
-	StreamID uint64
+	StreamID   uint64
+	ListenerID uint64
+}
+
+type DTopicRemoveListenerExtra struct {
+	StreamID   uint64
 	ListenerID uint64
 }
 
@@ -305,6 +310,14 @@ func loadExtras(raw []byte, op OpCode) (interface{}, error) {
 		return extra, err
 	case OpStreamMessage:
 		extra := StreamMessageExtra{}
+		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
+		return extra, err
+	case OpDTopicAddListener:
+		extra := DTopicAddListenerExtra{}
+		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
+		return extra, err
+	case OpDTopicRemoveListener:
+		extra := DTopicRemoveListenerExtra{}
 		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
 		return extra, err
 	default:

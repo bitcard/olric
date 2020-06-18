@@ -72,20 +72,20 @@ func (d *dtopic) addListener(topic string, f func(DTopicMessage)) (uint64, error
 	d.topics.mtx.Lock()
 	defer d.topics.mtx.Unlock()
 
-	regID := rand.Uint64()
+	listenerID := rand.Uint64()
 	l, ok := d.topics.m[topic]
 	if ok {
-		l.m[regID] = &listener{f: f}
+		l.m[listenerID] = &listener{f: f}
 	} else {
 		d.topics.m[topic] = &listeners{
 			m: make(map[uint64]*listener),
 		}
-		d.topics.m[topic].m[regID] = &listener{f: f}
+		d.topics.m[topic].m[listenerID] = &listener{f: f}
 	}
-	return regID, nil
+	return listenerID, nil
 }
 
-func (d *dtopic) removeListener(topic string, regID uint64) error {
+func (d *dtopic) removeListener(topic string, listenerID uint64) error {
 	d.topics.mtx.Lock()
 	defer d.topics.mtx.Unlock()
 
@@ -94,12 +94,12 @@ func (d *dtopic) removeListener(topic string, regID uint64) error {
 		return fmt.Errorf("topic not found: %s: %w", topic, ErrInvalidArgument)
 	}
 
-	_, ok = l.m[regID]
+	_, ok = l.m[listenerID]
 	if !ok {
 		return fmt.Errorf("listener not found: %s: %w", topic, ErrInvalidArgument)
 	}
 
-	delete(l.m, regID)
+	delete(l.m, listenerID)
 	if len(l.m) == 0 {
 		delete(d.topics.m, topic)
 	}
@@ -247,11 +247,11 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 	name := req.DMap
 	streamID := req.Extra.(protocol.DTopicAddListenerExtra).StreamID
 	db.streams.mu.RLock()
-	 _, ok := db.streams.m[streamID]
+	_, ok := db.streams.m[streamID]
 	db.streams.mu.RUnlock()
 	if !ok {
 		// TODO: We may want to assign a new status for this kind of errors
-		req.Error(protocol.StatusBadRequest, "StreamID could not be found")
+		return req.Error(protocol.StatusBadRequest, "StreamID could not be found")
 	}
 
 	// Local listener
@@ -316,9 +316,13 @@ func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 	return dt.db.dtopic.addListener(dt.name, f)
 }
 
-// RemoveListener removes a listener with the given regID.
-func (dt *DTopic) RemoveListener(regID uint64) error {
-	return dt.db.dtopic.removeListener(dt.name, regID)
+func (db *Olric) exDTopicRemoveListenerOperation(req *protocol.Message) *protocol.Message {
+	db.dtopic.removeListener(req.DMap, )
+}
+
+// RemoveListener removes a listener with the given listenerID.
+func (dt *DTopic) RemoveListener(listenerID uint64) error {
+	return dt.db.dtopic.removeListener(dt.name, listenerID)
 }
 
 func (db *Olric) destroyDTopicOperation(req *protocol.Message) *protocol.Message {

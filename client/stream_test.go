@@ -60,10 +60,7 @@ func TestStream_EchoListener(t *testing.T) {
 	// Mock transport.Client.CreateStream
 	createStreamFunction = mockCreateStream
 
-	l := &listener{
-		read:  make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l := newListener()
 	_, listenerID, err := c.addStreamListener(l)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
@@ -111,18 +108,12 @@ func TestStream_CreateNewStream(t *testing.T) {
 	// Mock transport.Client.CreateStream
 	createStreamFunction = mockCreateStream
 
-	l1 := &listener{
-		read:  make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l1 := newListener()
 	_, _, err = c.addStreamListener(l1)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
-	l2 := &listener{
-		read:  make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l2 := newListener()
 	_, _, err = c.addStreamListener(l2)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
@@ -155,20 +146,14 @@ func TestStream_MultipleListener(t *testing.T) {
 
 	listeners := make(map[uint64]*listener)
 
-	l1 := &listener{
-		read:  make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l1 := newListener()
 	_, listenerID1, err := c.addStreamListener(l1)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
 	listeners[listenerID1] = l1
 
-	l2 := &listener{
-		read:  make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l2 := newListener()
 	_, listenerID2, err := c.addStreamListener(l2)
 	if err != nil {
 		t.Fatalf("Expected nil. Got %v", err)
