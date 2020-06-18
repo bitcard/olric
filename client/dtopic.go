@@ -48,57 +48,75 @@ func (dt *DTopic) Publish(msg interface{}) error {
 }
 
 func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
-	l := &listener{
-		read: make(chan *protocol.Message, 1),
-		write: make(chan *protocol.Message, 1),
-	}
+	l := newListener()
 	streamID, listenerID, err := dt.addStreamListener(l)
 	if err != nil {
 		return 0, err
 	}
-	// TODO: Remove this listener if any of the steps return an error.
 
 	m := &protocol.Message{
 		DMap: dt.name,
 		Extra: protocol.DTopicAddListenerExtra{
 			ListenerID: listenerID,
-			StreamID: streamID,
+			StreamID:   streamID,
 		},
 	}
 	resp, err := dt.client.Request(protocol.OpDTopicAddListener, m)
 	if err != nil {
+		_ = dt.removeStreamListener(listenerID)
 		return 0, err
 	}
 	err = checkStatusCode(resp)
 	if err != nil {
+		_ = dt.removeStreamListener(listenerID)
 		return 0, err
 	}
+
+	dt.wg.Add(1)
 	go func(l *listener) {
-		// TODO: Graceful shutdown
+		defer dt.wg.Done()
 		select {
+		case <-l.ctx.Done():
+			return
 		case req := <-l.read:
-			msg, err := dt.unmarshalValue(req.Value)
+			raw, err := dt.unmarshalValue(req.Value)
 			if err != nil {
 				// TODO: Log this
 			}
-			f(msg.(olric.DTopicMessage))
+			msg, ok := raw.(olric.DTopicMessage)
+			if !ok {
+				// TODO: Log this
+			}
+			f(msg)
 		}
 	}(l)
 	return listenerID, nil
 }
 
-/*
-func (d *DTopic) RemoveListener(regID int64) error {
-	m := &protocol.Message{
-		DMap: d.name,
-	}
-	resp, err := d.client.Request(protocol.OpDTopicRemoveListener, m)
+func (dt *DTopic) RemoveListener(listenerID uint64) error {
+	streamID, err := dt.findStreamIDByListenerID(listenerID)
 	if err != nil {
 		return err
 	}
-	return checkStatusCode(resp)
+	m := &protocol.Message{
+		DMap: dt.name,
+		Extra: protocol.DTopicRemoveListenerExtra{
+			ListenerID: listenerID,
+			StreamID:   streamID,
+		},
+	}
+	resp, err := dt.client.Request(protocol.OpDTopicRemoveListener, m)
+	if err != nil {
+		return err
+	}
+	err = checkStatusCode(resp)
+	if err != nil {
+		return err
+	}
+	return dt.removeStreamListener(listenerID)
 }
 
+/*
 func (d *DTopic) Destroy() error {
 	m := &protocol.Message{
 		DMap: d.name,

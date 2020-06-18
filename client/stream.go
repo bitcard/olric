@@ -35,8 +35,20 @@ var errTooManyListener = errors.New("stream has too many listeners")
 const maxListenersPerStream = 1024
 
 type listener struct {
-	read  chan *protocol.Message
-	write chan *protocol.Message
+	read   chan *protocol.Message
+	write  chan *protocol.Message
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
+func newListener() *listener {
+	ctx, cancel := context.WithCancel(context.Background())
+	return &listener{
+		read:   make(chan *protocol.Message, 1),
+		write:  make(chan *protocol.Message, 1),
+		ctx:    ctx,
+		cancel: cancel,
+	}
 }
 
 // streams provides a bidirectional communication channel between Olric nodes and clients. It can also be used
@@ -130,6 +142,8 @@ func (c *Client) writeToStream(s *stream, l *listener) {
 		select {
 		case <-s.ctx.Done():
 			return
+		case <-l.ctx.Done():
+			return
 		case msg := <-l.write:
 			s.write <- msg
 		}
@@ -173,4 +187,35 @@ func (c *Client) addStreamListener(l *listener) (uint64, uint64, error) {
 		return 0, 0, err
 	}
 	return streamID, listenerID, nil
+}
+
+func (c *Client) removeStreamListener(listenerID uint64) error {
+	c.streams.mu.Lock()
+	defer c.streams.mu.Unlock()
+
+	for _, s := range c.streams.m {
+		for id, l := range s.listeners {
+			if id == listenerID {
+				l.cancel() // this closes underlying goroutines
+				delete(s.listeners, id)
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("no listener found with given ID")
+}
+
+func (c *Client) findStreamIDByListenerID(listenerID uint64) (uint64, error) {
+	c.streams.mu.RLock()
+	defer c.streams.mu.RUnlock()
+
+	for streamID, s := range c.streams.m {
+		for id, _ := range s.listeners {
+			if id == listenerID {
+				return streamID, nil
+			}
+		}
+	}
+	// TODO: Create an error type for this
+	return 0, fmt.Errorf("no listener found with given ID")
 }
