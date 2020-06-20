@@ -94,15 +94,10 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 }
 
 func (dt *DTopic) RemoveListener(listenerID uint64) error {
-	streamID, err := dt.findStreamIDByListenerID(listenerID)
-	if err != nil {
-		return err
-	}
 	m := &protocol.Message{
 		DMap: dt.name,
 		Extra: protocol.DTopicRemoveListenerExtra{
 			ListenerID: listenerID,
-			StreamID:   streamID,
 		},
 	}
 	resp, err := dt.client.Request(protocol.OpDTopicRemoveListener, m)
@@ -116,15 +111,13 @@ func (dt *DTopic) RemoveListener(listenerID uint64) error {
 	return dt.removeStreamListener(listenerID)
 }
 
-/*
-func (d *DTopic) Destroy() error {
+func (dt *DTopic) Destroy() error {
 	m := &protocol.Message{
-		DMap: d.name,
+		DMap: dt.name,
 	}
-	resp, err := d.client.Request(protocol.OpDTopicDestroy, m)
+	resp, err := dt.client.Request(protocol.OpDTopicDestroy, m)
 	if err != nil {
 		return err
 	}
 	return checkStatusCode(resp)
 }
-*/

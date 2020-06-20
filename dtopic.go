@@ -29,6 +29,8 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+var errListenerIDCollision = errors.New("given listenerID already exists")
+
 // DTopicMessage denotes a distributed topic message.
 type DTopicMessage struct {
 	Message       interface{}
@@ -68,28 +70,44 @@ func newDTopic(ctx context.Context) *dtopic {
 	}
 }
 
-func (d *dtopic) addListener(topic string, f func(DTopicMessage)) (uint64, error) {
-	d.topics.mtx.Lock()
-	defer d.topics.mtx.Unlock()
+func (dt *dtopic) _addListener(listenerID uint64, topic string, f func(DTopicMessage)) error {
+	dt.topics.mtx.Lock()
+	defer dt.topics.mtx.Unlock()
 
-	listenerID := rand.Uint64()
-	l, ok := d.topics.m[topic]
+	// TODO: Check listenerID for collisions
+	l, ok := dt.topics.m[topic]
 	if ok {
+		if _, ok = l.m[listenerID]; ok {
+			return errListenerIDCollision
+		}
 		l.m[listenerID] = &listener{f: f}
 	} else {
-		d.topics.m[topic] = &listeners{
+		dt.topics.m[topic] = &listeners{
 			m: make(map[uint64]*listener),
 		}
-		d.topics.m[topic].m[listenerID] = &listener{f: f}
+		dt.topics.m[topic].m[listenerID] = &listener{f: f}
+	}
+	return nil
+}
+
+func (dt *dtopic) addListener(topic string, f func(DTopicMessage)) (uint64, error) {
+	listenerID := rand.Uint64()
+	err := dt._addListener(listenerID, topic, f)
+	if err != nil {
+		return 0, err
 	}
 	return listenerID, nil
 }
 
-func (d *dtopic) removeListener(topic string, listenerID uint64) error {
-	d.topics.mtx.Lock()
-	defer d.topics.mtx.Unlock()
+func (dt *dtopic) addRemoteListener(listenerID uint64, topic string, f func(DTopicMessage)) error {
+	return dt._addListener(listenerID, topic, f)
+}
 
-	l, ok := d.topics.m[topic]
+func (dt *dtopic) removeListener(topic string, listenerID uint64) error {
+	dt.topics.mtx.Lock()
+	defer dt.topics.mtx.Unlock()
+
+	l, ok := dt.topics.m[topic]
 	if !ok {
 		return fmt.Errorf("topic not found: %s: %w", topic, ErrInvalidArgument)
 	}
@@ -101,16 +119,16 @@ func (d *dtopic) removeListener(topic string, listenerID uint64) error {
 
 	delete(l.m, listenerID)
 	if len(l.m) == 0 {
-		delete(d.topics.m, topic)
+		delete(dt.topics.m, topic)
 	}
 	return nil
 }
 
-func (d *dtopic) dispatch(topic string, msg *DTopicMessage) error {
-	d.topics.mtx.RLock()
-	defer d.topics.mtx.RUnlock()
+func (dt *dtopic) dispatch(topic string, msg *DTopicMessage) error {
+	dt.topics.mtx.RLock()
+	defer dt.topics.mtx.RUnlock()
 
-	l, ok := d.topics.m[topic]
+	l, ok := dt.topics.m[topic]
 	if !ok {
 		// there is no listener for this topic on this node.
 		return fmt.Errorf("topic not found: %s: %w", topic, ErrInvalidArgument)
@@ -121,7 +139,7 @@ func (d *dtopic) dispatch(topic string, msg *DTopicMessage) error {
 	sem := semaphore.NewWeighted(num)
 
 	for _, ll := range l.m {
-		if err := sem.Acquire(d.ctx, 1); err != nil {
+		if err := sem.Acquire(dt.ctx, 1); err != nil {
 			return err
 		}
 
@@ -138,10 +156,10 @@ func (d *dtopic) dispatch(topic string, msg *DTopicMessage) error {
 	return nil
 }
 
-func (d *dtopic) destroy(topic string) {
-	d.topics.mtx.Lock()
-	defer d.topics.mtx.Unlock()
-	delete(d.topics.m, topic)
+func (dt *dtopic) destroy(topic string) {
+	dt.topics.mtx.Lock()
+	defer dt.topics.mtx.Unlock()
+	delete(dt.topics.m, topic)
 }
 
 // NewDTopic returns a new distributed topic instance.
@@ -262,13 +280,13 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 		s, ok := db.streams.m[streamID]
 		db.streams.mu.RUnlock()
 		if !ok {
-			db.log.V(2).Println("[ERROR] Stream could not be found with the given ID: %d", streamID)
+			db.log.V(2).Printf("[ERROR] Stream could not be found with the given ID: %d", streamID)
 			// TODO: Deregister this listener
 			return
 		}
 		value, err := db.serializer.Marshal(msg)
 		if err != nil {
-			db.log.V(2).Println("[ERROR] Failed to serialize DTopicMessage: %v", err)
+			db.log.V(2).Printf("[ERROR] Failed to serialize DTopicMessage: %v", err)
 			return
 		}
 		m := protocol.NewStreamMessage(listenerID)
@@ -276,7 +294,7 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 		m.Value = value
 		s.write <- m
 	}
-	_, err := db.dtopic.addListener(name, f)
+	err := db.dtopic.addRemoteListener(listenerID, name, f)
 	if err != nil {
 		return req.Error(protocol.StatusInternalServerError, err)
 	}
@@ -317,7 +335,15 @@ func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 }
 
 func (db *Olric) exDTopicRemoveListenerOperation(req *protocol.Message) *protocol.Message {
-	db.dtopic.removeListener(req.DMap, )
+	extra, ok := req.Extra.(protocol.DTopicRemoveListenerExtra)
+	if !ok {
+		return req.Error(protocol.StatusBadRequest, "wrong Extra type")
+	}
+	err := db.dtopic.removeListener(req.DMap, extra.ListenerID)
+	if err != nil {
+		return req.Error(protocol.StatusInternalServerError, err)
+	}
+	return req.Success()
 }
 
 // RemoveListener removes a listener with the given listenerID.
@@ -356,6 +382,14 @@ func (db *Olric) destroyDTopicOnCluster(topic string) error {
 		})
 	}
 	return g.Wait()
+}
+
+func (db *Olric) exDTopicDestroyOperation(req *protocol.Message) *protocol.Message {
+	err := db.destroyDTopicOnCluster(req.DMap)
+	if err != nil {
+		return req.Error(protocol.StatusInternalServerError, err)
+	}
+	return req.Success()
 }
 
 // Destroy removes all listeners for this topic on the cluster. If Publish function is called again after Destroy, the topic will be

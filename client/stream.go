@@ -204,18 +204,3 @@ func (c *Client) removeStreamListener(listenerID uint64) error {
 	}
 	return fmt.Errorf("no listener found with given ID")
 }
-
-func (c *Client) findStreamIDByListenerID(listenerID uint64) (uint64, error) {
-	c.streams.mu.RLock()
-	defer c.streams.mu.RUnlock()
-
-	for streamID, s := range c.streams.m {
-		for id, _ := range s.listeners {
-			if id == listenerID {
-				return streamID, nil
-			}
-		}
-	}
-	// TODO: Create an error type for this
-	return 0, fmt.Errorf("no listener found with given ID")
-}

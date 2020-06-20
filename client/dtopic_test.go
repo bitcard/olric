@@ -154,3 +154,42 @@ func TestClient_DTopicRemoveListener(t *testing.T) {
 		}
 	}
 }
+
+func TestClient_DTopicDestroy(t *testing.T) {
+	db, done, err := newDB()
+	if err != nil {
+		t.Fatalf("Expected nil. Got %v", err)
+	}
+	defer func() {
+		serr := db.Shutdown(context.Background())
+		if serr != nil {
+			t.Errorf("Expected nil. Got %v", serr)
+		}
+		<-done
+	}()
+
+	c, err := New(testConfig)
+	if err != nil {
+		t.Fatalf("Expected nil. Got: %v", err)
+	}
+	onMessage := func(message olric.DTopicMessage) {}
+	dt := c.NewDTopic("my-dtopic")
+	listenerID, err := dt.AddListener(onMessage)
+	if err != nil {
+		t.Errorf("Expected nil. Got: %s", err)
+	}
+	err = dt.RemoveListener(listenerID)
+	if err != nil {
+		t.Errorf("Expected nil. Got: %s", err)
+	}
+	dt.streams.mu.RLock()
+	defer dt.streams.mu.RUnlock()
+
+	for _, s := range dt.streams.m {
+		for id, _ := range s.listeners {
+			if id == listenerID {
+				t.Fatalf("ListenerID: %d is still exist", id)
+			}
+		}
+	}
+}
