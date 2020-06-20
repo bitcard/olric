@@ -85,6 +85,7 @@ const (
 	OpStreamCreated
 	OpStreamClosed
 	OpStreamMessage
+	OpDTopicDestroy
 )
 
 type StatusCode uint8
@@ -236,7 +237,6 @@ type DTopicAddListenerExtra struct {
 }
 
 type DTopicRemoveListenerExtra struct {
-	StreamID   uint64
 	ListenerID uint64
 }
 

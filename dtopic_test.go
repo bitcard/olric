@@ -47,12 +47,12 @@ func TestDTopic_PublishStandalone(t *testing.T) {
 		}
 	}
 
-	regID, err := dt.AddListener(onMessage)
+	listenerID, err := dt.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	defer func() {
-		err = dt.RemoveListener(regID)
+		err = dt.RemoveListener(listenerID)
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}
@@ -88,11 +88,11 @@ func TestDTopic_RemoveListener(t *testing.T) {
 	}
 
 	onMessage := func(msg DTopicMessage) {}
-	regID, err := dt.AddListener(onMessage)
+	listenerID, err := dt.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	err = dt.RemoveListener(regID)
+	err = dt.RemoveListener(listenerID)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
@@ -129,12 +129,12 @@ func TestDTopic_PublishCluster(t *testing.T) {
 		atomic.AddInt32(&count, 1)
 	}
 
-	regID, err := dt.AddListener(onMessage)
+	listenerID, err := dt.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	defer func() {
-		err = dt.RemoveListener(regID)
+		err = dt.RemoveListener(listenerID)
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}
@@ -205,7 +205,7 @@ func TestDTopic_Destroy(t *testing.T) {
 	}
 
 	onMessage := func(msg DTopicMessage) {}
-	regID, err := dtOne.AddListener(onMessage)
+	listenerID, err := dtOne.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestDTopic_Destroy(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	err = dtOne.RemoveListener(regID)
+	err = dtOne.RemoveListener(listenerID)
 	if !errors.Is(err, ErrInvalidArgument) {
 		t.Fatalf("Expected ErrInvalidArgument. Got: %v", err)
 	}
@@ -263,12 +263,12 @@ func TestDTopic_DTopicMessage(t *testing.T) {
 		}
 	}
 
-	regID, err := dtOne.AddListener(onMessage)
+	listenerID, err := dtOne.AddListener(onMessage)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	defer func() {
-		err = dtOne.RemoveListener(regID)
+		err = dtOne.RemoveListener(listenerID)
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}

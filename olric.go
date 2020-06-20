@@ -65,7 +65,7 @@ var (
 )
 
 // ReleaseVersion is the current stable version of Olric
-const ReleaseVersion string = "0.2.0"
+const ReleaseVersion string = "0.3.0"
 
 const (
 	nilTimeout                = 0 * time.Second
@@ -455,6 +455,7 @@ func (db *Olric) registerOperations() {
 	db.operations[protocol.OpDTopicPublish] = db.exDTopicPublishOperation
 	db.operations[protocol.OpDTopicAddListener] = db.exDTopicAddListenerOperation
 	db.operations[protocol.OpDTopicRemoveListener] = db.exDTopicRemoveListenerOperation
+	db.operations[protocol.OpDTopicDestroy] = db.exDTopicDestroyOperation
 
 	// Bidirectional communication channel for clients and cluster members.
 	db.operations[protocol.OpCreateStream] = db.createStreamOperation
