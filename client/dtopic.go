@@ -15,6 +15,8 @@
 package client
 
 import (
+	"sync"
+
 	"github.com/buraksezer/olric"
 	"github.com/buraksezer/olric/internal/protocol"
 )
@@ -22,12 +24,16 @@ import (
 type DTopic struct {
 	*Client
 	name string
+
+	mu        sync.Mutex
+	listeners map[uint64]struct{}
 }
 
 func (c *Client) NewDTopic(name string) *DTopic {
 	return &DTopic{
-		Client: c,
-		name:   name,
+		Client:    c,
+		name:      name,
+		listeners: make(map[uint64]struct{}),
 	}
 }
 
@@ -90,6 +96,10 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 			f(msg)
 		}
 	}(l)
+	// This DTopic needs its listeners.
+	dt.mu.Lock()
+	dt.listeners[listenerID] = struct{}{}
+	dt.mu.Unlock()
 	return listenerID, nil
 }
 
@@ -108,7 +118,15 @@ func (dt *DTopic) RemoveListener(listenerID uint64) error {
 	if err != nil {
 		return err
 	}
-	return dt.removeStreamListener(listenerID)
+	err = dt.removeStreamListener(listenerID)
+	if err != nil {
+		return err
+	}
+
+	dt.mu.Lock()
+	delete(dt.listeners, listenerID)
+	dt.mu.Unlock()
+	return nil
 }
 
 func (dt *DTopic) Destroy() error {
@@ -119,5 +137,24 @@ func (dt *DTopic) Destroy() error {
 	if err != nil {
 		return err
 	}
-	return checkStatusCode(resp)
+	err = checkStatusCode(resp)
+	if err != nil {
+		return err
+	}
+
+	// Remove local listeners
+	dt.mu.Lock()
+	defer dt.mu.Unlock()
+	for listenerID, _ := range dt.listeners {
+		err = dt.removeStreamListener(listenerID)
+		if err != nil {
+			// TODO: Log this
+			continue
+		}
+	}
+	// I don't know it's good to remove the map items while iterating over the same map.
+	for listenerID, _ := range dt.listeners {
+		delete(dt.listeners, listenerID)
+	}
+	return nil
 }

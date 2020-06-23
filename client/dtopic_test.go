@@ -178,10 +178,12 @@ func TestClient_DTopicDestroy(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected nil. Got: %s", err)
 	}
-	err = dt.RemoveListener(listenerID)
+
+	err = dt.Destroy()
 	if err != nil {
 		t.Errorf("Expected nil. Got: %s", err)
 	}
+
 	dt.streams.mu.RLock()
 	defer dt.streams.mu.RUnlock()
 
