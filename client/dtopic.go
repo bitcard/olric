@@ -152,7 +152,7 @@ func (dt *DTopic) Destroy() error {
 			continue
 		}
 	}
-	// I don't know it's good to remove the map items while iterating over the same map.
+	// I don't know that it's good to remove the map items while iterating over the same map.
 	for listenerID, _ := range dt.listeners {
 		delete(dt.listeners, listenerID)
 	}

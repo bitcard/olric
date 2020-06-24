@@ -455,14 +455,14 @@ func (db *Olric) updateRoutingOperation(req *protocol.Message) *protocol.Message
 	coordinator, err := db.checkAndGetCoordinator(coordinatorID)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Routing table cannot be updated: %v", err)
-		return req.Error(protocol.StatusBadRequest, err)
+		return req.Error(protocol.StatusErrInvalidArgument, err)
 	}
 
 	// Compare partition counts to catch a possible inconsistencies in configuration
 	if db.config.PartitionCount != uint64(len(table)) {
 		db.log.V(2).Printf("[ERROR] Routing table cannot be updated. "+
 			"Expected partition count is %d, got: %d", db.config.PartitionCount, uint64(len(table)))
-		return req.Error(protocol.StatusBadRequest, err)
+		return req.Error(protocol.StatusErrInvalidArgument, err)
 	}
 
 	// owners(atomic.Value) is guarded by routingUpdateMtx against parallel writers.

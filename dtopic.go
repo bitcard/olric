@@ -269,7 +269,7 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 	db.streams.mu.RUnlock()
 	if !ok {
 		// TODO: We may want to assign a new status for this kind of errors
-		return req.Error(protocol.StatusBadRequest, "StreamID could not be found")
+		return req.Error(protocol.StatusErrInvalidArgument, "StreamID could not be found")
 	}
 
 	// Local listener
@@ -337,7 +337,7 @@ func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 func (db *Olric) exDTopicRemoveListenerOperation(req *protocol.Message) *protocol.Message {
 	extra, ok := req.Extra.(protocol.DTopicRemoveListenerExtra)
 	if !ok {
-		return req.Error(protocol.StatusBadRequest, "wrong Extra type")
+		return req.Error(protocol.StatusErrInvalidArgument, "wrong Extra type")
 	}
 	err := db.dtopic.removeListener(req.DMap, extra.ListenerID)
 	if err != nil {

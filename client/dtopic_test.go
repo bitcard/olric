@@ -16,9 +16,10 @@ package client
 
 import (
 	"context"
-	"github.com/buraksezer/olric"
 	"testing"
 	"time"
+
+	"github.com/buraksezer/olric"
 )
 
 func TestClient_DTopicPublish(t *testing.T) {

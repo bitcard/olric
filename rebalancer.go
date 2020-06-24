@@ -297,7 +297,7 @@ func (db *Olric) moveDMapOperation(req *protocol.Message) *protocol.Message {
 		db.log.V(2).Printf("[ERROR] Received DMap: %s on PartID: %d (backup: %v) doesn't belong to me",
 			box.Name, box.PartID, box.Backup)
 
-		return req.Error(protocol.StatusBadRequest,
+		return req.Error(protocol.StatusErrInvalidArgument,
 			fmt.Sprintf("partID: %d (backup: %v) doesn't belong to %s", box.PartID, box.Backup, db.this))
 	}
 
