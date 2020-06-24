@@ -158,6 +158,12 @@ func checkStatusCode(resp *protocol.Message) error {
 		return olric.ErrEndOfQuery
 	case resp.Status == protocol.StatusErrUnknownOperation:
 		return olric.ErrUnknownOperation
+	case resp.Status == protocol.StatusErrInvalidArgument:
+		return olric.ErrInvalidArgument
+	case resp.Status == protocol.StatusErrServerGone:
+		return olric.ErrServerGone
+	case resp.Status == protocol.StatusErrKeyTooLarge:
+		return olric.ErrKeyTooLarge
 	default:
 		return fmt.Errorf("unknown status: %v", resp.Status)
 	}

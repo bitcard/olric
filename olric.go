@@ -56,12 +56,11 @@ var (
 	// ErrUnknownOperation means that an unidentified message has been received from a client.
 	ErrUnknownOperation = errors.New("unknown operation")
 
-	// ErrBadRequest denotes that request body is invalid.
-	ErrBadRequest = errors.New("bad request")
-
 	ErrServerGone = errors.New("server is gone")
 
 	ErrInvalidArgument = errors.New("invalid argument")
+
+	ErrKeyTooLarge = errors.New("key too large")
 )
 
 // ReleaseVersion is the current stable version of Olric
@@ -476,7 +475,7 @@ func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Mes
 	case err == ErrKeyNotFound, err == storage.ErrKeyNotFound:
 		return req.Error(protocol.StatusErrKeyNotFound, err)
 	case err == storage.ErrKeyTooLarge:
-		return req.Error(protocol.StatusBadRequest, err)
+		return req.Error(protocol.StatusErrKeyTooLarge, err)
 	case err == ErrOperationTimeout:
 		return req.Error(protocol.StatusErrOperationTimeout, err)
 	case err == ErrKeyFound:
@@ -487,8 +486,10 @@ func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Mes
 		return req.Error(protocol.StatusErrUnknownOperation, err)
 	case err == ErrEndOfQuery:
 		return req.Error(protocol.StatusErrEndOfQuery, err)
-	case err == ErrBadRequest:
-		return req.Error(protocol.StatusBadRequest, err)
+	case err == ErrServerGone:
+		return req.Error(protocol.StatusErrServerGone, err)
+	case err == ErrInvalidArgument:
+		return req.Error(protocol.StatusErrInvalidArgument, err)
 	default:
 		return req.Error(protocol.StatusInternalServerError, err)
 	}
@@ -525,8 +526,12 @@ func (db *Olric) requestTo(addr string, opcode protocol.OpCode, req *protocol.Me
 		return nil, ErrEndOfQuery
 	case resp.Status == protocol.StatusErrUnknownOperation:
 		return nil, ErrUnknownOperation
-	case resp.Status == protocol.StatusBadRequest:
-		return nil, ErrBadRequest
+	case resp.Status == protocol.StatusErrServerGone:
+		return nil, ErrServerGone
+	case resp.Status == protocol.StatusErrInvalidArgument:
+		return nil, ErrInvalidArgument
+	case resp.Status == protocol.StatusErrKeyTooLarge:
+		return nil, ErrKeyTooLarge
 	}
 	return nil, fmt.Errorf("unknown status code: %d", resp.Status)
 }

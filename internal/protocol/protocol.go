@@ -94,7 +94,6 @@ type StatusCode uint8
 const (
 	StatusOK = StatusCode(iota)
 	StatusInternalServerError
-	StatusBadRequest
 	StatusErrKeyNotFound
 	StatusErrNoSuchLock
 	StatusErrLockNotAcquired
@@ -105,6 +104,9 @@ const (
 	StatusErrClusterQuorum
 	StatusErrUnknownOperation
 	StatusErrEndOfQuery
+	StatusErrServerGone
+	StatusErrInvalidArgument
+	StatusErrKeyTooLarge
 )
 
 const headerSize int64 = 12
