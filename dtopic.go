@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/vmihailenco/msgpack"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -74,7 +75,6 @@ func (dt *dtopic) _addListener(listenerID uint64, topic string, f func(DTopicMes
 	dt.topics.mtx.Lock()
 	defer dt.topics.mtx.Unlock()
 
-	// TODO: Check listenerID for collisions
 	l, ok := dt.topics.m[topic]
 	if ok {
 		if _, ok = l.m[listenerID]; ok {
@@ -145,11 +145,10 @@ func (dt *dtopic) dispatch(topic string, msg *DTopicMessage) error {
 
 		wg.Add(1)
 		// Dereference the pointer and make a copy of DTopicMessage for every listener.
-		m := *msg
 		go func(f func(message DTopicMessage)) {
 			defer wg.Done()
 			defer sem.Release(1)
-			f(m)
+			f(*msg)
 		}(ll.f)
 	}
 	wg.Wait()
@@ -182,17 +181,17 @@ func (db *Olric) NewDTopic(name string) (*DTopic, error) {
 func (db *Olric) publishDTopicMessageOperation(req *protocol.Message) *protocol.Message {
 	rawmsg, err := db.unmarshalValue(req.Value)
 	if err != nil {
-		req.Error(protocol.StatusInternalServerError, err)
+		return req.Error(protocol.StatusInternalServerError, err)
 	}
 	msg, ok := rawmsg.(DTopicMessage)
 	if !ok {
-		req.Error(protocol.StatusInternalServerError, "invalid distributed topic message received")
+		return req.Error(protocol.StatusInternalServerError, "invalid distributed topic message received")
 	}
 
 	// req.DMap is a wrong name here. We will refactor the protocol and use a generic name.
 	err = db.dtopic.dispatch(req.DMap, &msg)
 	if err != nil {
-		req.Error(protocol.StatusInternalServerError, err)
+		return req.Error(protocol.StatusInternalServerError, err)
 	}
 	return req.Success()
 }
@@ -211,9 +210,9 @@ func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic strin
 			}
 			return nil
 		}
+		return nil
 	}
-
-	data, err := db.serializer.Marshal(*msg)
+	data, err := msgpack.Marshal(*msg)
 	if err != nil {
 		return err
 	}
@@ -280,11 +279,14 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 		s, ok := db.streams.m[streamID]
 		db.streams.mu.RUnlock()
 		if !ok {
-			db.log.V(2).Printf("[ERROR] Stream could not be found with the given ID: %d", streamID)
-			// TODO: Deregister this listener
+			db.log.V(2).Printf("[ERROR] Stream could not be found with the given StreamID: %d", streamID)
+			err := db.dtopic.removeListener(name, listenerID)
+			if err != nil {
+				db.log.V(2).Printf("[ERROR] Listener could not be removed with ListenerID: %d: %v", listenerID, err)
+			}
 			return
 		}
-		value, err := db.serializer.Marshal(msg)
+		value, err := msgpack.Marshal(msg)
 		if err != nil {
 			db.log.V(2).Printf("[ERROR] Failed to serialize DTopicMessage: %v", err)
 			return
