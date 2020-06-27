@@ -66,31 +66,7 @@ func (s *Server) SetDispatcher(f func(*protocol.Message) *protocol.Message) {
 	s.dispatcher = f
 }
 
-// processRequest waits for a new request, handles it and returns the appropriate response.
-func (s *Server) processRequest(req *protocol.Message, conn io.ReadWriteCloser, connStatus *uint32) error {
-	// Read reads the incoming message from the underlying TCP socket and parses
-	err := req.Read(conn)
-	if err != nil {
-		return errors.WithMessage(err, "failed to read request")
-	}
-
-	// Mark connection as busy.
-	atomic.StoreUint32(connStatus, busyConn)
-
-	// Mark connection as idle before start waiting a new request
-	defer atomic.StoreUint32(connStatus, idleConn)
-
-	// Conn is required for streams
-	req.SetConn(conn)
-
-	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
-	resp := s.dispatcher(req)
-	err = resp.Write(conn)
-	// WithMessage returns nil, if the err is nil.
-	return errors.WithMessage(err, "failed to write response")
-}
-
-func (s *Server) controlConn(conn io.ReadWriteCloser, connStatus *uint32, done chan struct{}) {
+func (s *Server) controlConnLifeCycle(conn io.ReadWriteCloser, connStatus *uint32, done chan struct{}) {
 	// Control connection state and close it.
 	defer s.wg.Done()
 
@@ -136,6 +112,29 @@ func (s *Server) controlConn(conn io.ReadWriteCloser, connStatus *uint32, done c
 	}
 }
 
+// processMessage waits for a new request, handles it and returns the appropriate response.
+func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) error {
+	var req protocol.Message
+	// Read reads the incoming message from the underlying TCP socket and parses
+	err := req.Read(conn)
+	if err != nil {
+		return errors.WithMessage(err, "failed to read request")
+	}
+
+	// Mark connection as busy.
+	atomic.StoreUint32(connStatus, busyConn)
+
+	// Mark connection as idle before start waiting a new request
+	defer atomic.StoreUint32(connStatus, idleConn)
+
+	// Conn is required for streams
+	req.SetConn(conn)
+
+	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
+	resp := s.dispatcher(&req)
+	return resp.Write(conn)
+}
+
 // processConn waits for requests and calls request handlers to generate a response. The connections are reusable.
 func (s *Server) processConn(conn net.Conn) {
 	defer s.wg.Done()
@@ -146,29 +145,20 @@ func (s *Server) processConn(conn net.Conn) {
 	defer close(done)
 
 	s.wg.Add(1)
-	go s.controlConn(conn, &connStatus, done)
+	go s.controlConnLifeCycle(conn, &connStatus, done)
 
 	for {
-		var req protocol.Message
-		// processRequest waits to read a message from the TCP socket.
+		// processMessage waits to read a message from the TCP socket.
 		// Then calls its handler to generate a response.
-		err := s.processRequest(&req, conn, &connStatus)
+		err := s.processMessage(conn, &connStatus)
 		if err != nil {
+			s.log.V(3).Printf("[ERROR] Failed to process the incoming request: %v", err)
+
 			// The socket probably would have been closed by the client.
 			if errors.Cause(err) == io.EOF || errors.Cause(err) == protocol.ErrConnClosed {
+				s.log.V(3).Printf("[ERROR] End of the TCP connection: %v", err)
 				break
 			}
-
-			// Protocol error. Prepare an error message and return it.
-			errResp := req.Error(protocol.StatusInternalServerError, err)
-			err = errResp.Write(conn)
-			if err != nil {
-				// Failed to write to the socket. Fail early. This should be a bug or
-				// the underlying TCP socket is unstable or unusable.
-				s.log.V(3).Printf("[ERROR] Failed to return error message: %v", err)
-				break
-			}
-			// Continue waiting for incoming requests.
 		}
 	}
 }

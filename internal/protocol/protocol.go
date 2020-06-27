@@ -16,7 +16,6 @@
 package protocol
 
 import (
-	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -29,6 +28,8 @@ import (
 // pool is good for recycling memory while reading messages from the socket.
 var pool = bufpool.New()
 
+const headerSize int64 = 12
+
 // MagicCode defines an unique code to distinguish a request message from a response message in Olric Binary Protocol.
 type MagicCode uint8
 
@@ -40,76 +41,27 @@ const (
 	MagicRes MagicCode = 0xE3
 )
 
-type OpCode uint8
+type MessageReadWriter interface {
+	Encode() error
+	Decode() error
+}
 
-// ops
-const (
-	OpPut = OpCode(iota) + 1
-	OpPutEx
-	OpPutIf
-	OpPutIfEx
-	OpGet
-	OpDelete
-	OpDestroy
-	OpLock
-	OpLockWithTimeout
-	OpUnlock
-	OpIncr
-	OpDecr
-	OpGetPut
-	OpUpdateRouting
-	OpPutReplica
-	OpPutIfReplica
-	OpPutExReplica
-	OpPutIfExReplica
-	OpDeletePrev
-	OpGetPrev
-	OpGetBackup
-	OpDeleteBackup
-	OpDestroyDMap
-	OpMoveDMap
-	OpLengthOfPart
-	OpPipeline
-	OpPing
-	OpStats
-	OpExpire
-	OpExpireReplica
-	OpQuery
-	OpLocalQuery
-	OpPublishDTopicMessage
-	OpDestroyDTopic
-	OpDTopicPublish
-	OpDTopicAddListener
-	OpDTopicRemoveListener
-	OpCreateStream
-	OpStreamCreated
-	OpStreamClosed
-	OpStreamMessage
-	OpDTopicDestroy
-)
+func ExtractMagic(conn io.ReadWriteCloser) (MagicCode, error) {
+	buf := pool.Get()
+	defer pool.Put(buf)
 
-type StatusCode uint8
+	_, err := io.CopyN(buf, conn, 1)
+	if err != nil {
+		return 0, filterNetworkErrors(err)
+	}
 
-// status codes
-const (
-	StatusOK = StatusCode(iota)
-	StatusInternalServerError
-	StatusErrKeyNotFound
-	StatusErrNoSuchLock
-	StatusErrLockNotAcquired
-	StatusErrWriteQuorum
-	StatusErrReadQuorum
-	StatusErrOperationTimeout
-	StatusErrKeyFound
-	StatusErrClusterQuorum
-	StatusErrUnknownOperation
-	StatusErrEndOfQuery
-	StatusErrServerGone
-	StatusErrInvalidArgument
-	StatusErrKeyTooLarge
-)
-
-const headerSize int64 = 12
+	var code MagicCode
+	err = binary.Read(buf, binary.BigEndian, &code)
+	if err != nil {
+		return 0, err
+	}
+	return code, nil
+}
 
 // Header defines a message header for both request and response.
 type Header struct {
@@ -160,88 +112,6 @@ func NewStreamMessage(listenerID uint64) *Message {
 	return m
 }
 
-// LockWithTimeoutExtra defines extra values for this operation.
-type LockWithTimeoutExtra struct {
-	Timeout  int64
-	Deadline int64
-}
-
-// LockExtra defines extra values for this operation.
-type LockExtra struct {
-	Deadline int64
-}
-
-// PutExtra defines extra values for this operation.
-type PutExtra struct {
-	Timestamp int64
-}
-
-// PutExExtra defines extra values for this operation.
-type PutExExtra struct {
-	TTL       int64
-	Timestamp int64
-}
-
-// PutIfExtra defines extra values for this operation.
-type PutIfExtra struct {
-	Flags     int16
-	Timestamp int64
-}
-
-// PutIfExExtra defines extra values for this operation.
-type PutIfExExtra struct {
-	Flags     int16
-	Timestamp int64
-	TTL       int64
-}
-
-// LengthOfPartExtra defines extra values for this operation.
-type LengthOfPartExtra struct {
-	PartID uint64
-	Backup bool
-}
-
-// AtomicExtra defines extra values for this operation.
-type AtomicExtra struct {
-	Timestamp int64
-}
-
-// ExpireExtrrea defines extra values for this operation.
-type ExpireExtra struct {
-	TTL       int64
-	Timestamp int64
-}
-
-// UpdateRoutingExtra defines extra values for this operation.
-type UpdateRoutingExtra struct {
-	CoordinatorID uint64
-}
-
-type LocalQueryExtra struct {
-	PartID uint64
-}
-
-type QueryExtra struct {
-	PartID uint64
-}
-
-type StreamCreatedExtra struct {
-	StreamID uint64
-}
-
-type StreamMessageExtra struct {
-	ListenerID uint64
-}
-
-type DTopicAddListenerExtra struct {
-	StreamID   uint64
-	ListenerID uint64
-}
-
-type DTopicRemoveListenerExtra struct {
-	ListenerID uint64
-}
-
 // ErrConnClosed means that the underlying TCP connection has been closed
 // by the client or operating system.
 var ErrConnClosed = errors.New("connection closed")
@@ -254,78 +124,6 @@ func filterNetworkErrors(err error) error {
 		return ErrConnClosed
 	}
 	return err
-}
-
-func loadExtras(raw []byte, op OpCode) (interface{}, error) {
-	switch op {
-	case OpPutEx, OpPutExReplica:
-		extra := PutExExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpPut, OpPutReplica:
-		extra := PutExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpLockWithTimeout:
-		extra := LockWithTimeoutExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpLock:
-		extra := LockExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpLengthOfPart:
-		extra := LengthOfPartExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpIncr, OpDecr, OpGetPut:
-		extra := AtomicExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpExpire, OpExpireReplica:
-		extra := ExpireExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpPutIfEx, OpPutIfExReplica:
-		extra := PutIfExExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpPutIf, OpPutIfReplica:
-		extra := PutIfExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpUpdateRouting:
-		extra := UpdateRoutingExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpLocalQuery:
-		extra := LocalQueryExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpQuery:
-		extra := QueryExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpStreamCreated:
-		extra := StreamCreatedExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpStreamMessage:
-		extra := StreamMessageExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpDTopicAddListener:
-		extra := DTopicAddListenerExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	case OpDTopicRemoveListener:
-		extra := DTopicRemoveListenerExtra{}
-		err := binary.Read(bytes.NewReader(raw), binary.BigEndian, &extra)
-		return extra, err
-	default:
-		// Programming error
-		return nil, fmt.Errorf("given OpCode: %v doesn't have extras", op)
-	}
 }
 
 // Read reads a whole protocol message(including the value) from given connection
