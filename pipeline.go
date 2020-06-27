@@ -24,10 +24,10 @@ import (
 func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
 	conn := bytes.NewBuffer(req.Value)
 	response := &bytes.Buffer{}
-	// Read the pipelined messages into an in-memory buffer.
+	// Decode the pipelined messages into an in-memory buffer.
 	for {
 		var preq protocol.Message
-		err := preq.Read(conn)
+		err := preq.Decode(conn)
 		if err == io.EOF {
 			// It's done. The last message has been read.
 			break
@@ -35,7 +35,7 @@ func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
 
 		// Return an error message in pipelined response.
 		if err != nil {
-			err = preq.Error(protocol.StatusInternalServerError, err).Write(response)
+			err = preq.Error(protocol.StatusInternalServerError, err).Encode(response)
 			if err != nil {
 				return req.Error(protocol.StatusInternalServerError, err)
 			}
@@ -43,7 +43,7 @@ func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
 		}
 		f, ok := db.operations[preq.Op]
 		if !ok {
-			err = preq.Error(protocol.StatusInternalServerError, ErrUnknownOperation).Write(response)
+			err = preq.Error(protocol.StatusInternalServerError, ErrUnknownOperation).Encode(response)
 			if err != nil {
 				return req.Error(protocol.StatusInternalServerError, err)
 			}
@@ -52,7 +52,7 @@ func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
 
 		// Call its function to prepare a response.
 		pres := f(&preq)
-		err = pres.Write(response)
+		err = pres.Encode(response)
 		if err != nil {
 			return req.Error(protocol.StatusInternalServerError, err)
 		}

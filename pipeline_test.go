@@ -54,7 +54,7 @@ func TestPipeline(t *testing.T) {
 		Value: value,
 		Extra: protocol.PutExtra{Timestamp: time.Now().UnixNano()},
 	}
-	err = req.Write(&buf)
+	err = req.Encode(&buf)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}

@@ -58,7 +58,7 @@ func TestPipeline_Put(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Op != protocol.OpPut {
 			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPut, res.response.Op)
@@ -161,7 +161,7 @@ func TestPipeline_PutEx(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Op != protocol.OpPutEx {
 			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPutEx, res.response.Op)
@@ -216,7 +216,7 @@ func TestPipeline_Delete(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.Operation() == "Put" {
 			err = res.Put()
@@ -297,7 +297,7 @@ func TestPipeline_IncrDecr(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	// Read responses
+	// Decode responses
 	for index, res := range responses {
 		if res.Operation() == "Incr" {
 			val, err := res.Incr()
@@ -504,7 +504,7 @@ func TestPipeline_Expire(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Op != protocol.OpPut && res.response.Op != protocol.OpExpire {
 			t.Fatalf("Expected Op: %v or %v. Got: %v",
@@ -528,7 +528,7 @@ func TestPipeline_Expire(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Status != protocol.StatusErrKeyNotFound {
 			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
@@ -586,7 +586,7 @@ func TestPipeline_PutIf(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Op == protocol.OpPutIf {
 			if res.response.Status != protocol.StatusErrKeyFound {
@@ -662,7 +662,7 @@ func TestPipeline_PutIfEx(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	// Read responses
+	// Decode responses
 	for _, res := range responses {
 		if res.response.Status != protocol.StatusErrKeyNotFound {
 			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)

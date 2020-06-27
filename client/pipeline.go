@@ -63,7 +63,7 @@ func (p *Pipeline) Put(dmap, key string, value interface{}) error {
 		Value: data,
 		Extra: protocol.PutExtra{Timestamp: time.Now().UnixNano()},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // PutEx appends a PutEx command to the underlying buffer with the given parameters.
@@ -88,7 +88,7 @@ func (p *Pipeline) PutEx(dmap, key string, value interface{}, timeout time.Durat
 		},
 		Value: data,
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Get appends a Get command to the underlying buffer with the given parameters.
@@ -104,7 +104,7 @@ func (p *Pipeline) Get(dmap, key string) error {
 		DMap: dmap,
 		Key:  key,
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Delete appends a Delete command to the underlying buffer with the given parameters.
@@ -120,7 +120,7 @@ func (p *Pipeline) Delete(dmap, key string) error {
 		DMap: dmap,
 		Key:  key,
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 func (p *Pipeline) incrOrDecr(opcode protocol.OpCode, dmap, key string, delta int) error {
@@ -141,7 +141,7 @@ func (p *Pipeline) incrOrDecr(opcode protocol.OpCode, dmap, key string, delta in
 		Value: value,
 		Extra: protocol.AtomicExtra{Timestamp: time.Now().UnixNano()},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Incr appends an Incr command to the underlying buffer with the given parameters.
@@ -173,7 +173,7 @@ func (p *Pipeline) GetPut(dmap, key string, value interface{}) error {
 		Value: data,
 		Extra: protocol.AtomicExtra{Timestamp: time.Now().UnixNano()},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Destroy appends a Destroy command to the underlying buffer with the given parameters.
@@ -188,7 +188,7 @@ func (p *Pipeline) Destroy(dmap string) error {
 		},
 		DMap: dmap,
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // PutIf appends a PutIf command to the underlying buffer.
@@ -221,7 +221,7 @@ func (p *Pipeline) PutIf(dmap, key string, value interface{}, flags int16) error
 			Timestamp: time.Now().UnixNano(),
 		},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // PutIfEx appends a PutIfEx command to the underlying buffer.
@@ -255,7 +255,7 @@ func (p *Pipeline) PutIfEx(dmap, key string, value interface{}, timeout time.Dur
 			Timestamp: time.Now().UnixNano(),
 		},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Expire updates the expiry for the given key. It returns ErrKeyNotFound if the
@@ -276,7 +276,7 @@ func (p *Pipeline) Expire(dmap, key string, timeout time.Duration) error {
 			Timestamp: time.Now().UnixNano(),
 		},
 	}
-	return m.Write(p.buf)
+	return m.Encode(p.buf)
 }
 
 // Flush flushes all the commands to the server using a single write call.
@@ -293,13 +293,13 @@ func (p *Pipeline) Flush() ([]PipelineResponse, error) {
 		return nil, err
 	}
 
-	// Read the pipelined messages from pipeline response.
+	// Decode the pipelined messages from pipeline response.
 	conn := bytes.NewBuffer(resp.Value)
 	var responses []PipelineResponse
 	var resErr error
 	for {
 		var pres protocol.Message
-		err := pres.Read(conn)
+		err := pres.Decode(conn)
 		if err == io.EOF {
 			break
 		}

@@ -115,8 +115,8 @@ func (s *Server) controlConnLifeCycle(conn io.ReadWriteCloser, connStatus *uint3
 // processMessage waits for a new request, handles it and returns the appropriate response.
 func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) error {
 	var req protocol.Message
-	// Read reads the incoming message from the underlying TCP socket and parses
-	err := req.Read(conn)
+	// Decode reads the incoming message from the underlying TCP socket and parses
+	err := req.Decode(conn)
 	if err != nil {
 		return errors.WithMessage(err, "failed to read request")
 	}
@@ -132,7 +132,7 @@ func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) err
 
 	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
 	resp := s.dispatcher(&req)
-	return resp.Write(conn)
+	return resp.Encode(conn)
 }
 
 // processConn waits for requests and calls request handlers to generate a response. The connections are reusable.

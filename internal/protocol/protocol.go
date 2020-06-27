@@ -126,9 +126,9 @@ func filterNetworkErrors(err error) error {
 	return err
 }
 
-// Read reads a whole protocol message(including the value) from given connection
+// Decode reads a whole protocol message(including the value) from given connection
 // by decoding it.
-func (m *Message) Read(conn io.Reader) error {
+func (m *Message) Decode(conn io.Reader) error {
 	buf := pool.Get()
 	defer pool.Put(buf)
 
@@ -144,7 +144,7 @@ func (m *Message) Read(conn io.Reader) error {
 		return fmt.Errorf("invalid message")
 	}
 
-	// Read Key, DMap name and message extras here.
+	// Decode Key, DMap name and message extras here.
 	_, err = io.CopyN(buf, conn, int64(m.BodyLen))
 	if err != nil {
 		return filterNetworkErrors(err)
@@ -172,8 +172,8 @@ func (m *Message) Read(conn io.Reader) error {
 	return nil
 }
 
-// Write writes a protocol message to given TCP connection by encoding it.
-func (m *Message) Write(conn io.Writer) error {
+// Encode writes a protocol message to given TCP connection by encoding it.
+func (m *Message) Encode(conn io.Writer) error {
 	buf := pool.Get()
 	defer pool.Put(buf)
 

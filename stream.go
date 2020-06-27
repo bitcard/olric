@@ -58,7 +58,7 @@ func (db *Olric) readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, 
 
 	for {
 		var msg protocol.Message
-		err := msg.Read(conn)
+		err := msg.Decode(conn)
 		if err != nil {
 			errCh <- err
 			return
@@ -112,7 +112,7 @@ loop:
 			// server is gone
 			break loop
 		case msg := <-s.write:
-			err = msg.Write(conn)
+			err = msg.Encode(conn)
 			if err != nil {
 				return req.Error(protocol.StatusInternalServerError, err)
 			}

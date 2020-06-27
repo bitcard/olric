@@ -158,14 +158,14 @@ func (c *Client) RequestTo(addr string, op protocol.OpCode, req *protocol.Messag
 		}
 	}()
 
-	err = req.Write(conn)
+	err = req.Encode(conn)
 	if err != nil {
 		deadConn = true
 		return nil, err
 	}
 
 	var resp protocol.Message
-	err = resp.Read(conn)
+	err = resp.Decode(conn)
 	if err != nil {
 		deadConn = true
 		return nil, err

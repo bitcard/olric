@@ -27,7 +27,7 @@ import (
 func readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, errCh chan<- error) {
 	for {
 		var msg protocol.Message
-		err := msg.Read(conn)
+		err := msg.Decode(conn)
 		if err != nil {
 			errCh <- err
 			return
@@ -59,7 +59,7 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *pro
 	}()
 
 	// Create a new byte stream
-	err = req.Write(conn)
+	err = req.Encode(conn)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *pro
 	for {
 		select {
 		case msg := <-write:
-			err = msg.Write(conn)
+			err = msg.Encode(conn)
 			if err != nil {
 				return err
 			}

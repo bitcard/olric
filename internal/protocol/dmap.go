@@ -81,7 +81,7 @@ func (d *DMapMessage) Decode() error {
 		return fmt.Errorf("invalid DMap message")
 	}
 
-	// Read Key, DMap name and message extras here.
+	// Decode Key, DMap name and message extras here.
 	_, err = io.CopyN(buf, d.conn, int64(d.BodyLen))
 	if err != nil {
 		return filterNetworkErrors(err)
@@ -109,7 +109,7 @@ func (d *DMapMessage) Decode() error {
 	return nil
 }
 
-// Write writes a protocol message to given TCP connection by encoding it.
+// Encode writes a protocol message to given TCP connection by encoding it.
 func (d *DMapMessage) Encode() error {
 	buf := pool.Get()
 	defer pool.Put(buf)
