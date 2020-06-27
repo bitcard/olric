@@ -474,7 +474,7 @@ func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Mes
 		return req.Error(protocol.StatusErrLockNotAcquired, err)
 	case err == ErrKeyNotFound, err == storage.ErrKeyNotFound:
 		return req.Error(protocol.StatusErrKeyNotFound, err)
-	case err == storage.ErrKeyTooLarge:
+	case err == storage.ErrKeyTooLarge, err == ErrKeyTooLarge:
 		return req.Error(protocol.StatusErrKeyTooLarge, err)
 	case err == ErrOperationTimeout:
 		return req.Error(protocol.StatusErrOperationTimeout, err)

@@ -28,7 +28,9 @@ func TestStream_CreateStream(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
+	streamClosed := make(chan struct{})
 	defer func() {
+		<-streamClosed
 		err = db.Shutdown(context.Background())
 		if err != nil {
 			db.log.V(2).Printf("[ERROR] Failed to shutdown Olric: %v", err)
@@ -44,6 +46,7 @@ func TestStream_CreateStream(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}
+		close(streamClosed)
 	}()
 
 loop:
@@ -74,7 +77,9 @@ func TestStream_EchoMessage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
+	streamClosed := make(chan struct{})
 	defer func() {
+		<-streamClosed
 		err = db.Shutdown(context.Background())
 		if err != nil {
 			db.log.V(2).Printf("[ERROR] Failed to shutdown Olric: %v", err)
@@ -90,6 +95,7 @@ func TestStream_EchoMessage(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}
+		close(streamClosed)
 	}()
 
 	f := func(m *protocol.Message) {

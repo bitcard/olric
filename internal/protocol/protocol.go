@@ -129,14 +129,14 @@ type Message struct {
 	DMap   string      // [m..(n-1)] DMap (as needed, length in Header)
 	Key    string      // [n..(x-1)] Key (as needed, length in Header)
 	Value  []byte      // [x..y] Value (as needed, length in Header)
-	conn   io.ReadWriter
+	conn   io.ReadWriteCloser
 }
 
-func (m *Message) SetConn(conn io.ReadWriter) {
+func (m *Message) SetConn(conn io.ReadWriteCloser) {
 	m.conn = conn
 }
 
-func (m *Message) GetConn() (io.ReadWriter, error) {
+func (m *Message) GetConn() (io.ReadWriteCloser, error) {
 	if m.conn == nil {
 		return nil, fmt.Errorf("conn is nil")
 	}

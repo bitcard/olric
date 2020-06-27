@@ -67,7 +67,7 @@ func (s *Server) SetDispatcher(f func(*protocol.Message) *protocol.Message) {
 }
 
 // processRequest waits for a new request, handles it and returns the appropriate response.
-func (s *Server) processRequest(req *protocol.Message, conn io.ReadWriter, connStatus *uint32) error {
+func (s *Server) processRequest(req *protocol.Message, conn io.ReadWriteCloser, connStatus *uint32) error {
 	// Read reads the incoming message from the underlying TCP socket and parses
 	err := req.Read(conn)
 	if err != nil {
@@ -90,6 +90,52 @@ func (s *Server) processRequest(req *protocol.Message, conn io.ReadWriter, connS
 	return errors.WithMessage(err, "failed to write response")
 }
 
+func (s *Server) controlConn(conn io.ReadWriteCloser, connStatus *uint32, done chan struct{}) {
+	// Control connection state and close it.
+	defer s.wg.Done()
+
+	select {
+	case <-s.ctx.Done():
+		// The server is down.
+	case <-done:
+		// The main loop is quit. TCP socket may be closed or a protocol error occurred.
+	}
+
+	if atomic.LoadUint32(connStatus) != idleConn {
+		s.log.V(3).Printf("[DEBUG] Connection is busy, waiting")
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		//
+		// WARNING: I added this context to fix a deadlock issue when an Olric node is being closed.
+		// Debugging such an error is pretty hard and it blocks me. Normally I expect that SetDeadline
+		// should fix the problem but It doesn't work. I don't know why. But this hack works well.
+		//
+		// TODO: Make this parametric.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+	loop:
+		for {
+			select {
+			// Wait for the current request. When it mark the connection as idle, break the loop.
+			case <-ticker.C:
+				if atomic.LoadUint32(connStatus) == idleConn {
+					s.log.V(3).Printf("[DEBUG] Connection is idle, closing")
+					break loop
+				}
+			case <-ctx.Done():
+				s.log.V(3).Printf("[DEBUG] Connection is still in-use. Aborting.")
+				break loop
+			}
+		}
+	}
+
+	// Close the connection and quit.
+	if err := conn.Close(); err != nil {
+		s.log.V(3).Printf("[DEBUG] Failed to close TCP connection: %v", err)
+	}
+}
+
 // processConn waits for requests and calls request handlers to generate a response. The connections are reusable.
 func (s *Server) processConn(conn net.Conn) {
 	defer s.wg.Done()
@@ -99,51 +145,8 @@ func (s *Server) processConn(conn net.Conn) {
 	done := make(chan struct{})
 	defer close(done)
 
-	// Control connection state and close it.
 	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		select {
-		case <-s.ctx.Done():
-			// The server is down.
-		case <-done:
-			// The main loop is quit. TCP socket may be closed or a protocol error occurred.
-		}
-
-		if atomic.LoadUint32(&connStatus) != idleConn {
-			s.log.V(3).Printf("[DEBUG] Connection is busy, waiting")
-			ticker := time.NewTicker(100 * time.Millisecond)
-			defer ticker.Stop()
-
-			//
-			// WARNING: I added this context to fix a deadlock issue when an Olric node is being closed.
-			// Debugging such an error is pretty hard and it blocks me. Normally I expect that SetDeadline
-			// should fix the problem but It doesn't work. I don't know why. But this hack works well.
-			//
-			// TODO: Make this parametric.
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
-		loop:
-			for {
-				select {
-				// Wait for the current request. When it mark the connection as idle, break the loop.
-				case <-ticker.C:
-					if atomic.LoadUint32(&connStatus) == idleConn {
-						s.log.V(3).Printf("[DEBUG] Connection is idle, closing")
-						break loop
-					}
-				case <-ctx.Done():
-					s.log.V(3).Printf("[DEBUG] Connection is still in-use. Aborting.")
-					break loop
-				}
-			}
-		}
-
-		// Close the connection and quit.
-		if err := conn.Close(); err != nil {
-			s.log.V(3).Printf("[DEBUG] Failed to close TCP connection: %v", err)
-		}
-	}()
+	go s.controlConn(conn, &connStatus, done)
 
 	for {
 		var req protocol.Message

@@ -15,6 +15,7 @@
 package client
 
 import (
+	"github.com/vmihailenco/msgpack"
 	"sync"
 
 	"github.com/buraksezer/olric"
@@ -85,12 +86,9 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 		case <-l.ctx.Done():
 			return
 		case req := <-l.read:
-			raw, err := dt.unmarshalValue(req.Value)
+			var msg olric.DTopicMessage
+			err = msgpack.Unmarshal(req.Value, &msg)
 			if err != nil {
-				// TODO: Log this
-			}
-			msg, ok := raw.(olric.DTopicMessage)
-			if !ok {
 				// TODO: Log this
 			}
 			f(msg)

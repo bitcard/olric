@@ -74,7 +74,9 @@ func NewJSONSerializer() Serializer {
 
 type msgpackSerializer struct{}
 
-func (m msgpackSerializer) Marshal(v interface{}) ([]byte, error) { return msgpack.Marshal(v) }
+func (m msgpackSerializer) Marshal(v interface{}) ([]byte, error) {
+	return msgpack.Marshal(v)
+}
 
 func (m msgpackSerializer) Unmarshal(data []byte, v interface{}) error {
 	return msgpack.Unmarshal(data, v)
