@@ -327,6 +327,7 @@ func (db *Olric) getBackupOperation(w, r protocol.MessageReadWriter) {
 	value, err := msgpack.Marshal(*vdata)
 	if err != nil {
 		db.errorResponse(w, err)
+		return
 	}
 	w.SetStatus(protocol.StatusOK)
 	w.SetValue(value)

@@ -85,7 +85,7 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 			return
 		case req := <-l.read:
 			var msg olric.DTopicMessage
-			err = msgpack.Unmarshal(req.Value, &msg)
+			err = msgpack.Unmarshal(req.Value(), &msg)
 			if err != nil {
 				// TODO: Log this
 			}

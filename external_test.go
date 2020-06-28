@@ -52,7 +52,7 @@ func TestExternal_UnknownOperation(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	if resp.Status() != protocol.StatusErrUnknownOperation {
-		t.Fatalf("Expected status code: %d. Got: %d", protocol.StatusErrUnknownOperation, resp.Status)
+		t.Fatalf("Expected status code: %d. Got: %d", protocol.StatusErrUnknownOperation, resp.Status())
 	}
 }
 

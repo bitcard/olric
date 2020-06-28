@@ -166,7 +166,7 @@ func checkStatusCode(resp protocol.MessageReadWriter) error {
 	case status == protocol.StatusErrKeyTooLarge:
 		return olric.ErrKeyTooLarge
 	default:
-		return fmt.Errorf("unknown status: %v", resp.Status)
+		return fmt.Errorf("unknown status: %v", resp.Status())
 	}
 }
 

@@ -164,6 +164,7 @@ func (c *Client) RequestTo(addr string, req protocol.MessageReadWriter) (protoco
 
 	// Response is a shortcut to create a response message for the request.
 	resp := req.Response()
+	protocol.ExtractMagic(conn)
 	err = resp.Decode()
 	if err != nil {
 		deadConn = true

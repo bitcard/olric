@@ -112,7 +112,9 @@ func (dm *DMap) Delete(key string) error {
 func (db *Olric) exDeleteOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
 	err := db.deleteKey(req.DMap(), req.Key())
-	db.errorResponse(w, err)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
 func (db *Olric) deletePrevOperation(w, r protocol.MessageReadWriter) {
@@ -132,7 +134,9 @@ func (db *Olric) deletePrevOperation(w, r protocol.MessageReadWriter) {
 		go db.compactTables(dm)
 		err = nil
 	}
-	db.errorResponse(w, err)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
 func (db *Olric) deleteBackupOperation(w, r protocol.MessageReadWriter) {
@@ -152,7 +156,9 @@ func (db *Olric) deleteBackupOperation(w, r protocol.MessageReadWriter) {
 		go db.compactTables(dm)
 		err = nil
 	}
-	db.errorResponse(w, err)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
 func (db *Olric) deleteKeyValBackup(hkey uint64, name, key string) error {

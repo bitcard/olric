@@ -349,7 +349,7 @@ func TestDMap_Query(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	if resp.Status() != protocol.StatusOK {
-		t.Fatalf("Expected protocol.StatusOK (%d). Got: %d", protocol.StatusOK, resp.Status)
+		t.Fatalf("Expected protocol.StatusOK (%d). Got: %d", protocol.StatusOK, resp.Status())
 	}
 	var qr QueryResponse
 	if err = msgpack.Unmarshal(resp.Value(), &qr); err != nil {
@@ -416,6 +416,6 @@ func TestDMap_QueryEndOfKeySpace(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	if resp.Status() != protocol.StatusErrEndOfQuery {
-		t.Fatalf("Expected protocol.ErrEndOfQuery (%d). Got: %d", protocol.StatusErrEndOfQuery, resp.Status)
+		t.Fatalf("Expected protocol.ErrEndOfQuery (%d). Got: %d", protocol.StatusErrEndOfQuery, resp.Status())
 	}
 }

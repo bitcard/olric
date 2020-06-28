@@ -18,7 +18,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/vmihailenco/msgpack"
 	"math/rand"
 	"runtime"
 	"sync"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/buraksezer/olric/internal/discovery"
 	"github.com/buraksezer/olric/internal/protocol"
+	"github.com/vmihailenco/msgpack"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
@@ -180,14 +180,10 @@ func (db *Olric) NewDTopic(name string) (*DTopic, error) {
 
 func (db *Olric) publishDTopicMessageOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	rawmsg, err := db.unmarshalValue(req.Value())
+	var msg DTopicMessage
+	err := msgpack.Unmarshal(req.Value(), &msg)
 	if err != nil {
 		db.errorResponse(w, err)
-		return
-	}
-	msg, ok := rawmsg.(DTopicMessage)
-	if !ok {
-		db.errorResponse(w, fmt.Errorf("invalid distributed topic message received"))
 		return
 	}
 

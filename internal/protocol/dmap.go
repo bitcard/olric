@@ -23,8 +23,8 @@ import (
 const DMapMessageHeaderSize int64 = 11
 
 const (
-	MagicDMapReq MagicCode = 0xE4
-	MagicDMapRes MagicCode = 0xE5
+	MagicDMapReq MagicCode = 0xE2
+	MagicDMapRes MagicCode = 0xE3
 )
 
 // Header defines a message header for both request and response.
@@ -166,6 +166,9 @@ func (d *DMapMessage) Decode() error {
 	if vlen != 0 {
 		d.value = make([]byte, vlen)
 		copy(d.value, buf.Next(vlen))
+	}
+	if d.Op == OpGet {
+		fmt.Println("decoded", d.StatusCode, d)
 	}
 	return nil
 }

@@ -59,7 +59,7 @@ func TestPipeline(t *testing.T) {
 	presp := preq.Response()
 	db.pipelineOperation(presp, preq)
 	if presp.Status() != protocol.StatusOK {
-		t.Fatalf("Expected status: %v. Got: %v", protocol.StatusOK, presp.Status)
+		t.Fatalf("Expected status: %v. Got: %v", protocol.StatusOK, presp.Status())
 	}
 
 	dm, err := db.NewDMap(dmap)

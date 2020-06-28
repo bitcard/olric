@@ -410,10 +410,10 @@ func (db *Olric) exPutOperation(w, r protocol.MessageReadWriter) {
 	wo.fromReq(r)
 	err := db.put(wo)
 	if err != nil {
-		w.SetStatus(protocol.StatusOK)
+		db.errorResponse(w, err)
 		return
 	}
-	db.errorResponse(w, err)
+	w.SetStatus(protocol.StatusOK)
 }
 
 func (db *Olric) putReplicaOperation(w, r protocol.MessageReadWriter) {
