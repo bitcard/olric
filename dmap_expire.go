@@ -135,24 +135,33 @@ func (db *Olric) expire(w *writeop) error {
 	return err
 }
 
-func (db *Olric) expireReplicaOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) expireReplicaOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	dm, err := db.getBackupDMap(req.DMap, hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	dm.Lock()
 	defer dm.Unlock()
 
-	w := &writeop{}
-	w.fromReq(req)
-	return db.prepareResponse(req, db.localExpire(hkey, dm, w))
+	wo := &writeop{}
+	wo.fromReq(req)
+	err = db.localExpire(hkey, dm, wo)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
-func (db *Olric) exExpireOperation(req *protocol.Message) *protocol.Message {
-	w := &writeop{}
-	w.fromReq(req)
-	return db.prepareResponse(req, db.expire(w))
+func (db *Olric) exExpireOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
+	wo := &writeop{}
+	wo.fromReq(req)
+	err := db.expire(wo)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
 // Expire updates the expiry for the given key. It returns ErrKeyNotFound if the

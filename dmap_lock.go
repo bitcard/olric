@@ -185,29 +185,35 @@ func (dm *DMap) Lock(key string, deadline time.Duration) (*LockContext, error) {
 	return dm.db.lockKey(protocol.OpPutIf, dm.name, key, nilTimeout, deadline)
 }
 
-func (db *Olric) exLockWithTimeoutOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exLockWithTimeoutOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	timeout := req.Extra.(protocol.LockWithTimeoutExtra).Timeout
 	deadline := req.Extra.(protocol.LockWithTimeoutExtra).Deadline
 	ctx, err := db.lockKey(protocol.OpPutIfEx, req.DMap, req.Key, time.Duration(timeout), time.Duration(deadline))
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = ctx.token
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(ctx.token)
 }
 
-func (db *Olric) exLockOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exLockOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	deadline := req.Extra.(protocol.LockExtra).Deadline
 	ctx, err := db.lockKey(protocol.OpPutIf, req.DMap, req.Key, nilTimeout, time.Duration(deadline))
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = ctx.token
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(ctx.token)
 }
 
-func (db *Olric) exUnlockOperation(req *protocol.Message) *protocol.Message {
-	return db.prepareResponse(req, db.unlock(req.DMap, req.Key, req.Value))
+func (db *Olric) exUnlockOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
+	err := db.unlock(req.DMap, req.Key, req.Value)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }

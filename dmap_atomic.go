@@ -151,39 +151,43 @@ func (dm *DMap) GetPut(key string, value interface{}) (interface{}, error) {
 	return oldval, nil
 }
 
-func (db *Olric) exIncrDecrOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exIncrDecrOperation(w, r protocol.MessageReadWriter) {
 	var delta interface{}
+	req := r.(*protocol.DMapMessage)
 	err := db.serializer.Unmarshal(req.Value, &delta)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	op := "incr"
 	if req.Op == protocol.OpDecr {
 		op = "decr"
 	}
-	w := &writeop{
+	wo := &writeop{
 		opcode:        protocol.OpPut,
 		replicaOpcode: protocol.OpPutReplica,
 		dmap:          req.DMap,
 		key:           req.Key,
 		timestamp:     time.Now().UnixNano(),
 	}
-	newval, err := db.atomicIncrDecr(op, w, delta.(int))
+	newval, err := db.atomicIncrDecr(op, wo, delta.(int))
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 
-	data, err := db.serializer.Marshal(newval)
+	value, err := db.serializer.Marshal(newval)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = data
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }
 
-func (db *Olric) exGetPutOperation(req *protocol.Message) *protocol.Message {
-	w := &writeop{
+func (db *Olric) exGetPutOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
+	wo := &writeop{
 		opcode:        protocol.OpPut,
 		replicaOpcode: protocol.OpPutReplica,
 		dmap:          req.DMap,
@@ -191,13 +195,13 @@ func (db *Olric) exGetPutOperation(req *protocol.Message) *protocol.Message {
 		value:         req.Value,
 		timestamp:     time.Now().UnixNano(),
 	}
-	oldval, err := db.getPut(w)
+	oldval, err := db.getPut(wo)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
+	w.SetStatus(protocol.StatusOK)
 	if oldval != nil {
-		resp.Value = oldval
+		w.SetValue(oldval)
 	}
-	return resp
 }

@@ -441,28 +441,33 @@ func (db *Olric) setOwnedPartitionCount() {
 	atomic.StoreUint64(&db.ownedPartitionCount, count)
 }
 
-func (db *Olric) updateRoutingOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) updateRoutingOperation(w, r protocol.MessageReadWriter) {
+	// TODO: We need a different message type: SystemMessage
 	routingUpdateMtx.Lock()
 	defer routingUpdateMtx.Unlock()
 
+	req := r.(*protocol.DMapMessage)
 	table := make(routingTable)
 	err := msgpack.Unmarshal(req.Value, &table)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	coordinatorID := req.Extra.(protocol.UpdateRoutingExtra).CoordinatorID
 	coordinator, err := db.checkAndGetCoordinator(coordinatorID)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Routing table cannot be updated: %v", err)
-		return req.Error(protocol.StatusErrInvalidArgument, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	// Compare partition counts to catch a possible inconsistencies in configuration
 	if db.config.PartitionCount != uint64(len(table)) {
 		db.log.V(2).Printf("[ERROR] Routing table cannot be updated. "+
 			"Expected partition count is %d, got: %d", db.config.PartitionCount, uint64(len(table)))
-		return req.Error(protocol.StatusErrInvalidArgument, err)
+		db.errorResponse(w, ErrInvalidArgument)
+		return
 	}
 
 	// owners(atomic.Value) is guarded by routingUpdateMtx against parallel writers.
@@ -485,10 +490,11 @@ func (db *Olric) updateRoutingOperation(req *protocol.Message) *protocol.Message
 	// Collect report
 	data, err := db.prepareOwnershipReport()
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, ErrInvalidArgument)
+		return
 	}
-	res := req.Success()
-	res.Value = data
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(data)
 
 	// Call rebalancer to rebalance partitions
 	db.wg.Add(1)
@@ -500,7 +506,6 @@ func (db *Olric) updateRoutingOperation(req *protocol.Message) *protocol.Message
 		db.deleteStaleDMaps()
 	}()
 	db.log.V(3).Printf("[INFO] Routing table has been pushed by %s", coordinator)
-	return res
 }
 
 type ownershipReport struct {
@@ -524,7 +529,8 @@ func (db *Olric) prepareOwnershipReport() ([]byte, error) {
 	return msgpack.Marshal(res)
 }
 
-func (db *Olric) keyCountOnPartOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) keyCountOnPartOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	partID := req.Extra.(protocol.LengthOfPartExtra).PartID
 	isBackup := req.Extra.(protocol.LengthOfPartExtra).Backup
 
@@ -537,10 +543,9 @@ func (db *Olric) keyCountOnPartOperation(req *protocol.Message) *protocol.Messag
 
 	value, err := msgpack.Marshal(part.length())
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-
-	res := req.Success()
-	res.Value = value
-	return res
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }

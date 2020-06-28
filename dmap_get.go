@@ -295,64 +295,72 @@ func (dm *DMap) Get(key string) (interface{}, error) {
 	return dm.db.unmarshalValue(rawval)
 }
 
-func (db *Olric) exGetOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exGetOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	value, err := db.get(req.DMap, req.Key)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = value
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }
 
-func (db *Olric) getBackupOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) getBackupOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	dm, err := db.getBackupDMap(req.DMap, hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	dm.RLock()
 	defer dm.RUnlock()
 	vdata, err := dm.storage.Get(hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	if isKeyExpired(vdata.TTL) {
-		return req.Error(protocol.StatusErrKeyNotFound, "key expired")
+		db.errorResponse(w, ErrKeyNotFound)
+		return
 	}
 
 	value, err := msgpack.Marshal(*vdata)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
 	}
-	resp := req.Success()
-	resp.Value = value
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }
 
-func (db *Olric) getPrevOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) getPrevOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	part := db.getPartition(hkey)
 	tmp, ok := part.m.Load(req.DMap)
 	if !ok {
-		return req.Error(protocol.StatusErrKeyNotFound, "")
+		db.errorResponse(w, ErrKeyNotFound)
+		return
 	}
 	dm := tmp.(*dmap)
 
 	vdata, err := dm.storage.Get(hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	if isKeyExpired(vdata.TTL) {
-		return req.Error(protocol.StatusErrKeyNotFound, "key expired")
+		db.errorResponse(w, ErrKeyNotFound)
+		return
 	}
 
 	value, err := msgpack.Marshal(*vdata)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = value
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }

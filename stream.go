@@ -67,11 +67,9 @@ func (db *Olric) readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, 
 	}
 }
 
-func (db *Olric) createStreamOperation(req *protocol.Message) *protocol.Message {
-	conn, err := req.GetConn()
-	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
-	}
+func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
+	conn := req.GetConn()
 
 	// Now, we have a TCP socket here.
 	streamID := rand.Uint64()
@@ -112,13 +110,14 @@ loop:
 			// server is gone
 			break loop
 		case msg := <-s.write:
-			err = msg.Encode(conn)
+			err := msg.Encode(conn)
 			if err != nil {
-				return req.Error(protocol.StatusInternalServerError, err)
+				db.errorResponse(w, err)
+				return
 			}
 		case buf := <-bufCh:
 			s.read <- buf
 		}
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }

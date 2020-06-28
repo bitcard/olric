@@ -18,8 +18,8 @@ import (
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
-func (db *Olric) pingOperation(req *protocol.Message) *protocol.Message {
-	return req.Success()
+func (db *Olric) pingOperation(w, _ protocol.MessageReadWriter) {
+	w.SetStatus(protocol.StatusOK)
 }
 
 // Ping sends a dummy protocol messsage to the given host. This is useful to

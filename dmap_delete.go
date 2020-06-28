@@ -111,16 +111,19 @@ func (dm *DMap) Delete(key string) error {
 	return dm.db.deleteKey(dm.name, key)
 }
 
-func (db *Olric) exDeleteOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDeleteOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	err := db.deleteKey(req.DMap, req.Key)
-	return db.prepareResponse(req, err)
+	db.errorResponse(w, err)
 }
 
-func (db *Olric) deletePrevOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) deletePrevOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	dm, err := db.getDMap(req.DMap, hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	dm.Lock()
 	defer dm.Unlock()
@@ -131,14 +134,16 @@ func (db *Olric) deletePrevOperation(req *protocol.Message) *protocol.Message {
 		go db.compactTables(dm)
 		err = nil
 	}
-	return db.prepareResponse(req, err)
+	db.errorResponse(w, err)
 }
 
-func (db *Olric) deleteBackupOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) deleteBackupOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	dm, err := db.getBackupDMap(req.DMap, hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	dm.Lock()
 	defer dm.Unlock()
@@ -149,7 +154,7 @@ func (db *Olric) deleteBackupOperation(req *protocol.Message) *protocol.Message 
 		go db.compactTables(dm)
 		err = nil
 	}
-	return db.prepareResponse(req, err)
+	db.errorResponse(w, err)
 }
 
 func (db *Olric) deleteKeyValBackup(hkey uint64, name, key string) error {

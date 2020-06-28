@@ -44,6 +44,9 @@ const (
 type MessageReadWriter interface {
 	Encode() error
 	Decode() error
+	SetStatus(StatusCode)
+	SetValue([]byte)
+	OpCode() OpCode
 }
 
 func ExtractMagic(conn io.ReadWriteCloser) (MagicCode, error) {
@@ -212,38 +215,4 @@ func (m *Message) Encode(conn io.Writer) error {
 
 	_, err = buf.WriteTo(conn)
 	return filterNetworkErrors(err)
-}
-
-// Error generates an error message for the request.
-func (m *Message) Error(status StatusCode, err interface{}) *Message {
-	getError := func(err interface{}) string {
-		switch val := err.(type) {
-		case string:
-			return val
-		case error:
-			return val.Error()
-		default:
-			return ""
-		}
-	}
-
-	return &Message{
-		Header: Header{
-			Magic:  MagicRes,
-			Op:     m.Op,
-			Status: status,
-		},
-		Value: []byte(getError(err)),
-	}
-}
-
-// Success generates a success message for the request.
-func (m *Message) Success() *Message {
-	return &Message{
-		Header: Header{
-			Magic:  MagicRes,
-			Op:     m.Op,
-			Status: StatusOK,
-		},
-	}
 }

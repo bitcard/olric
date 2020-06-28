@@ -78,15 +78,16 @@ func (db *Olric) stats() stats.Stats {
 	return s
 }
 
-func (db *Olric) statsOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) statsOperation(w, r protocol.MessageReadWriter) {
+	// TODO: This should be a SystemMessage
+	req := r.(*protocol.DMapMessage)
 	s := db.stats()
 	value, err := msgpack.Marshal(s)
 	if err != nil {
 		req.Error(protocol.StatusInternalServerError, err)
 	}
-	res := req.Success()
-	res.Value = value
-	return res
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }
 
 // Stats exposes some useful metrics to monitor an Olric node.

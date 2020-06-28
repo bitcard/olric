@@ -178,22 +178,26 @@ func (db *Olric) NewDTopic(name string) (*DTopic, error) {
 	}, nil
 }
 
-func (db *Olric) publishDTopicMessageOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) publishDTopicMessageOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	rawmsg, err := db.unmarshalValue(req.Value)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	msg, ok := rawmsg.(DTopicMessage)
 	if !ok {
-		return req.Error(protocol.StatusInternalServerError, "invalid distributed topic message received")
+		db.errorResponse(w, fmt.Errorf("invalid distributed topic message received"))
+		return
 	}
 
 	// req.DMap is a wrong name here. We will refactor the protocol and use a generic name.
 	err = db.dtopic.dispatch(req.DMap, &msg)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
 func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic string, msg *DTopicMessage, sem *semaphore.Weighted) error {
@@ -260,15 +264,17 @@ func (db *Olric) publishDTopicMessage(topic string, msg *DTopicMessage) error {
 	return g.Wait()
 }
 
-func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDTopicAddListenerOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	name := req.DMap
 	streamID := req.Extra.(protocol.DTopicAddListenerExtra).StreamID
 	db.streams.mu.RLock()
 	_, ok := db.streams.m[streamID]
 	db.streams.mu.RUnlock()
 	if !ok {
-		// TODO: We may want to assign a new status for this kind of errors
-		return req.Error(protocol.StatusErrInvalidArgument, "StreamID could not be found")
+		err := fmt.Errorf("%w: StreamID could not be found", ErrInvalidArgument)
+		db.errorResponse(w, err)
+		return
 	}
 
 	// Local listener
@@ -298,15 +304,18 @@ func (db *Olric) exDTopicAddListenerOperation(req *protocol.Message) *protocol.M
 	}
 	err := db.dtopic.addRemoteListener(listenerID, name, f)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
-func (db *Olric) exDTopicPublishOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDTopicPublishOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	msg, err := db.unmarshalValue(req.Value)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	tm := &DTopicMessage{
 		Message:       msg,
@@ -315,9 +324,10 @@ func (db *Olric) exDTopicPublishOperation(req *protocol.Message) *protocol.Messa
 	}
 	err = db.publishDTopicMessage(req.DMap, tm)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
 // Publish publishes the given message to listeners of the topic. Message order and delivery are not guaranteed.
@@ -336,16 +346,19 @@ func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 	return dt.db.dtopic.addListener(dt.name, f)
 }
 
-func (db *Olric) exDTopicRemoveListenerOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDTopicRemoveListenerOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	extra, ok := req.Extra.(protocol.DTopicRemoveListenerExtra)
 	if !ok {
-		return req.Error(protocol.StatusErrInvalidArgument, "wrong Extra type")
+		db.errorResponse(w, fmt.Errorf("%w: wrong Extra type", ErrInvalidArgument))
+		return
 	}
 	err := db.dtopic.removeListener(req.DMap, extra.ListenerID)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
 // RemoveListener removes a listener with the given listenerID.
@@ -353,10 +366,11 @@ func (dt *DTopic) RemoveListener(listenerID uint64) error {
 	return dt.db.dtopic.removeListener(dt.name, listenerID)
 }
 
-func (db *Olric) destroyDTopicOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) destroyDTopicOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	// req.DMap is topic name in this context. This confusion will be fixed.
 	db.dtopic.destroy(req.DMap)
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
 func (db *Olric) destroyDTopicOnCluster(topic string) error {
@@ -386,12 +400,14 @@ func (db *Olric) destroyDTopicOnCluster(topic string) error {
 	return g.Wait()
 }
 
-func (db *Olric) exDTopicDestroyOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDTopicDestroyOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	err := db.destroyDTopicOnCluster(req.DMap)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }
 
 // Destroy removes all listeners for this topic on the cluster. If Publish function is called again after Destroy, the topic will be

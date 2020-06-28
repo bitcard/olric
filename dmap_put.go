@@ -49,7 +49,8 @@ type writeop struct {
 }
 
 // fromReq generates a new protocol message from writeop instance.
-func (w *writeop) fromReq(req *protocol.Message) {
+func (w *writeop) fromReq(r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	w.dmap = req.DMap
 	w.key = req.Key
 	w.value = req.Value
@@ -405,24 +406,34 @@ func (dm *DMap) PutIfEx(key string, value interface{}, timeout time.Duration, fl
 	return dm.db.put(w)
 }
 
-func (db *Olric) exPutOperation(req *protocol.Message) *protocol.Message {
-	w := &writeop{}
-	w.fromReq(req)
-	return db.prepareResponse(req, db.put(w))
+func (db *Olric) exPutOperation(w, r protocol.MessageReadWriter) {
+	wo := &writeop{}
+	wo.fromReq(r)
+	err := db.put(wo)
+	if err != nil {
+		w.SetStatus(protocol.StatusOK)
+		return
+	}
+	db.errorResponse(w, err)
 }
 
-func (db *Olric) putReplicaOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) putReplicaOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	hkey := db.getHKey(req.DMap, req.Key)
 	dm, err := db.getBackupDMap(req.DMap, hkey)
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 	dm.Lock()
 	defer dm.Unlock()
 
-	w := &writeop{}
-	w.fromReq(req)
-	return db.prepareResponse(req, db.localPut(hkey, dm, w))
+	wo := &writeop{}
+	wo.fromReq(req)
+	err = db.localPut(hkey, dm, wo)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
 func (db *Olric) compactTables(dm *dmap) {

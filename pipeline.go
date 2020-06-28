@@ -21,13 +21,27 @@ import (
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
-func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
-	conn := bytes.NewBuffer(req.Value)
-	response := &bytes.Buffer{}
+type pipelineConn struct {
+	*bytes.Buffer
+}
+
+func (p *pipelineConn) Close() error {
+	return nil
+}
+
+func newPipelineConn(data []byte) *pipelineConn {
+	return &pipelineConn{
+		Buffer: bytes.NewBuffer(data),
+	}
+}
+
+func (db *Olric) pipelineOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
+	conn := newPipelineConn(req.Value)
 	// Decode the pipelined messages into an in-memory buffer.
 	for {
-		var preq protocol.Message
-		err := preq.Decode(conn)
+		preq := protocol.NewDMapMessageRequest(conn)
+		err := preq.Decode()
 		if err == io.EOF {
 			// It's done. The last message has been read.
 			break
@@ -35,31 +49,27 @@ func (db *Olric) pipelineOperation(req *protocol.Message) *protocol.Message {
 
 		// Return an error message in pipelined response.
 		if err != nil {
-			err = preq.Error(protocol.StatusInternalServerError, err).Encode(response)
-			if err != nil {
-				return req.Error(protocol.StatusInternalServerError, err)
-			}
+			preq.SetStatus(protocol.StatusInternalServerError)
+			preq.SetValue([]byte(err.Error()))
 			continue
 		}
 		f, ok := db.operations[preq.Op]
 		if !ok {
-			err = preq.Error(protocol.StatusInternalServerError, ErrUnknownOperation).Encode(response)
-			if err != nil {
-				return req.Error(protocol.StatusInternalServerError, err)
-			}
+			preq.SetStatus(protocol.StatusInternalServerError)
+			preq.SetValue([]byte(ErrUnknownOperation.Error()))
 			continue
 		}
-
+		pres := protocol.NewDMapMessageResponse(conn)
 		// Call its function to prepare a response.
-		pres := f(&preq)
-		err = pres.Encode(response)
+		f(pres, preq)
+		err = pres.Encode()
 		if err != nil {
-			return req.Error(protocol.StatusInternalServerError, err)
+			db.errorResponse(w, err)
+			return
 		}
 	}
 
 	// Create a success response and assign pipelined responses as Value.
-	resp := req.Success()
-	resp.Value = response.Bytes()
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(conn.Bytes())
 }

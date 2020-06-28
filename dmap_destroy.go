@@ -59,12 +59,16 @@ func (dm *DMap) Destroy() error {
 	return dm.db.destroyDMap(dm.name)
 }
 
-func (db *Olric) exDestroyOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exDestroyOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	err := db.destroyDMap(req.DMap)
-	return db.prepareResponse(req, err)
+	if err != nil {
+		db.errorResponse(w, err)
+	}
 }
 
-func (db *Olric) destroyDMapOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) destroyDMapOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	// This is very similar with rm -rf. Destroys given dmap on the cluster
 	for partID := uint64(0); partID < db.config.PartitionCount; partID++ {
 		// Delete primary copies
@@ -76,5 +80,5 @@ func (db *Olric) destroyDMapOperation(req *protocol.Message) *protocol.Message {
 			bpart.m.Delete(req.DMap)
 		}
 	}
-	return req.Success()
+	w.SetStatus(protocol.StatusOK)
 }

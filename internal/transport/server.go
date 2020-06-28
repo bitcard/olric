@@ -16,6 +16,7 @@ package transport
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"strconv"
@@ -42,7 +43,7 @@ type Server struct {
 	log             *flog.Logger
 	wg              sync.WaitGroup
 	listener        net.Listener
-	dispatcher      func(*protocol.Message) *protocol.Message
+	dispatcher      func(w, r protocol.MessageReadWriter)
 	StartCh         chan struct{}
 	ctx             context.Context
 	cancel          context.CancelFunc
@@ -62,7 +63,7 @@ func NewServer(bindAddr string, bindPort int, keepalivePeriod time.Duration, log
 	}
 }
 
-func (s *Server) SetDispatcher(f func(*protocol.Message) *protocol.Message) {
+func (s *Server) SetDispatcher(f func(w, r protocol.MessageReadWriter)) {
 	s.dispatcher = f
 }
 
@@ -114,9 +115,21 @@ func (s *Server) controlConnLifeCycle(conn io.ReadWriteCloser, connStatus *uint3
 
 // processMessage waits for a new request, handles it and returns the appropriate response.
 func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) error {
-	var req protocol.Message
+	var req, resp protocol.MessageReadWriter
+	code, err := protocol.ExtractMagic(conn)
+	if err != nil {
+		return err
+	}
+	if code == protocol.MagicDMapReq {
+		req = protocol.NewDMapMessageRequest(conn)
+		resp = protocol.NewDMapMessageResponse(conn)
+	} else {
+		// TODO: Return a proper error
+		return fmt.Errorf("invalid magic")
+	}
+
 	// Decode reads the incoming message from the underlying TCP socket and parses
-	err := req.Decode(conn)
+	err = req.Decode()
 	if err != nil {
 		return errors.WithMessage(err, "failed to read request")
 	}
@@ -127,12 +140,9 @@ func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) err
 	// Mark connection as idle before start waiting a new request
 	defer atomic.StoreUint32(connStatus, idleConn)
 
-	// Conn is required for streams
-	req.SetConn(conn)
-
 	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
-	resp := s.dispatcher(&req)
-	return resp.Encode(conn)
+	s.dispatcher(resp, req)
+	return resp.Encode()
 }
 
 // processConn waits for requests and calls request handlers to generate a response. The connections are reusable.

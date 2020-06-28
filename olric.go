@@ -116,7 +116,7 @@ type Olric struct {
 	backups    map[uint64]*partition
 
 	// Matches opcodes to functions. It's somewhat like an HTTP request multiplexer
-	operations map[protocol.OpCode]func(*protocol.Message) *protocol.Message
+	operations map[protocol.OpCode]func(w, r protocol.MessageReadWriter)
 
 	// Internal TCP server and its client for peer-to-peer communication.
 	client *transport.Client
@@ -200,7 +200,7 @@ func New(c *config.Config) (*Olric, error) {
 		client:     client,
 		partitions: make(map[uint64]*partition),
 		backups:    make(map[uint64]*partition),
-		operations: make(map[protocol.OpCode]func(*protocol.Message) *protocol.Message),
+		operations: make(map[protocol.OpCode]func(w, r protocol.MessageReadWriter)),
 		server:     transport.NewServer(c.BindAddr, c.BindPort, c.KeepAlivePeriod, flogger),
 		members:    members{m: make(map[uint64]discovery.Member)},
 		dtopic:     newDTopic(ctx),
@@ -231,21 +231,23 @@ func (db *Olric) passCheckpoint() {
 	atomic.AddInt32(&db.passedCheckpoints, 1)
 }
 
-func (db *Olric) requestDispatcher(req *protocol.Message) *protocol.Message {
+func (db *Olric) requestDispatcher(w, r protocol.MessageReadWriter) {
 	// Check bootstrapping status
 	// Exclude protocol.OpUpdateRouting. The node is bootstrapped by this operation.
-	if req.Op != protocol.OpUpdateRouting {
+	if r.OpCode() != protocol.OpUpdateRouting {
 		if err := db.checkOperationStatus(); err != nil {
-			return db.prepareResponse(req, err)
+			db.errorResponse(w, err)
+			return
 		}
 	}
 
 	// Run the incoming command.
-	opr, ok := db.operations[req.Op]
+	f, ok := db.operations[r.OpCode()]
 	if !ok {
-		return db.prepareResponse(req, ErrUnknownOperation)
+		db.errorResponse(w, ErrUnknownOperation)
+		return
 	}
-	return opr(req)
+	f(w, r)
 }
 
 // bootstrapCoordinator prepares the very first routing table and bootstraps the coordinator node.
@@ -460,38 +462,52 @@ func (db *Olric) registerOperations() {
 	db.operations[protocol.OpCreateStream] = db.createStreamOperation
 }
 
-func (db *Olric) prepareResponse(req *protocol.Message, err error) *protocol.Message {
+func (db *Olric) errorResponse(w protocol.MessageReadWriter, err error) {
+	getError := func(err interface{}) []byte {
+		switch val := err.(type) {
+		case string:
+			return []byte(val)
+		case error:
+			return []byte(val.Error())
+		default:
+			return nil
+		}
+	}
+	w.SetValue(getError(err))
+
 	switch {
-	case err == nil:
-		return req.Success()
-	case err == ErrWriteQuorum:
-		return req.Error(protocol.StatusErrWriteQuorum, err)
-	case err == ErrReadQuorum:
-		return req.Error(protocol.StatusErrReadQuorum, err)
-	case err == ErrNoSuchLock:
-		return req.Error(protocol.StatusErrNoSuchLock, err)
-	case err == ErrLockNotAcquired:
-		return req.Error(protocol.StatusErrLockNotAcquired, err)
+	case err == ErrWriteQuorum, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrWriteQuorum)
+	case err == ErrReadQuorum, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrReadQuorum)
+	case err == ErrNoSuchLock, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrNoSuchLock)
+	case err == ErrLockNotAcquired, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrLockNotAcquired)
 	case err == ErrKeyNotFound, err == storage.ErrKeyNotFound:
-		return req.Error(protocol.StatusErrKeyNotFound, err)
-	case err == storage.ErrKeyTooLarge, err == ErrKeyTooLarge:
-		return req.Error(protocol.StatusErrKeyTooLarge, err)
-	case err == ErrOperationTimeout:
-		return req.Error(protocol.StatusErrOperationTimeout, err)
-	case err == ErrKeyFound:
-		return req.Error(protocol.StatusErrKeyFound, err)
-	case err == ErrClusterQuorum:
-		return req.Error(protocol.StatusErrClusterQuorum, err)
-	case err == ErrUnknownOperation:
-		return req.Error(protocol.StatusErrUnknownOperation, err)
-	case err == ErrEndOfQuery:
-		return req.Error(protocol.StatusErrEndOfQuery, err)
-	case err == ErrServerGone:
-		return req.Error(protocol.StatusErrServerGone, err)
-	case err == ErrInvalidArgument:
-		return req.Error(protocol.StatusErrInvalidArgument, err)
+		w.SetStatus(protocol.StatusErrKeyNotFound)
+	case errors.Is(err, ErrKeyNotFound), errors.Is(err, storage.ErrKeyNotFound):
+		w.SetStatus(protocol.StatusErrKeyNotFound)
+	case err == ErrKeyTooLarge, err == storage.ErrKeyTooLarge:
+		w.SetStatus(protocol.StatusErrKeyTooLarge)
+	case errors.Is(err, ErrKeyTooLarge), errors.Is(err, storage.ErrKeyTooLarge):
+		w.SetStatus(protocol.StatusErrKeyTooLarge)
+	case err == ErrOperationTimeout, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrOperationTimeout)
+	case err == ErrKeyFound, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrKeyFound)
+	case err == ErrClusterQuorum, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrClusterQuorum)
+	case err == ErrUnknownOperation, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrUnknownOperation)
+	case err == ErrEndOfQuery, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrEndOfQuery)
+	case err == ErrServerGone, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrServerGone)
+	case err == ErrInvalidArgument, errors.Is(err, ErrWriteQuorum):
+		w.SetStatus(protocol.StatusErrInvalidArgument)
 	default:
-		return req.Error(protocol.StatusInternalServerError, err)
+		w.SetStatus(protocol.StatusInternalServerError)
 	}
 }
 

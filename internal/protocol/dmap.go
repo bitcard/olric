@@ -65,6 +65,31 @@ func NewDMapMessageRequest(conn io.ReadWriteCloser) *DMapMessage {
 	}
 }
 
+func NewDMapMessageResponse(conn io.ReadWriteCloser) *DMapMessage {
+	return &DMapMessage{
+		Magic:             MagicDMapRes,
+		DMapMessageHeader: DMapMessageHeader{},
+		conn:              conn,
+	}
+}
+
+func (d *DMapMessage) SetStatus(code StatusCode) {
+	d.Status = code
+}
+
+func (d *DMapMessage) SetValue(value []byte) {
+	d.Value = value
+}
+
+func (d *DMapMessage) OpCode() OpCode {
+	return d.Op
+}
+
+// TODO: Remove this after implementing StreamMessage type
+func (d *DMapMessage) GetConn() io.ReadWriteCloser {
+	return d.conn
+}
+
 func (d *DMapMessage) Decode() error {
 	buf := pool.Get()
 	defer pool.Put(buf)

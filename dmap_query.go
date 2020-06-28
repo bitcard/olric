@@ -125,25 +125,28 @@ func (db *Olric) runLocalQuery(partID uint64, name string, q query.M) (queryResp
 	return result, nil
 }
 
-func (db *Olric) localQueryOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) localQueryOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	q, err := query.FromByte(req.Value)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	partID := req.Extra.(protocol.LocalQueryExtra).PartID
 	result, err := db.runLocalQuery(partID, req.DMap, q)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	value, err := msgpack.Marshal(&result)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = value
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }
 
 func (c *Cursor) reconcileResponses(responses []queryResponse) queryResponse {
@@ -291,28 +294,34 @@ func (c *Cursor) Close() {
 	c.cancel()
 }
 
-func (db *Olric) exQueryOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) exQueryOperation(w, r protocol.MessageReadWriter) {
+	req := r.(*protocol.DMapMessage)
 	dm, err := db.NewDMap(req.DMap)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	q, err := query.FromByte(req.Value)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	c, err := dm.Query(q)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	defer c.Close()
 
 	partID := req.Extra.(protocol.QueryExtra).PartID
 	if partID >= db.config.PartitionCount {
-		return req.Error(protocol.StatusErrEndOfQuery, ErrEndOfQuery)
+		db.errorResponse(w, ErrEndOfQuery)
+		return
 	}
 	responses, err := c.runQueryOnOwners(partID)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	data := make(QueryResponse)
@@ -322,9 +331,9 @@ func (db *Olric) exQueryOperation(req *protocol.Message) *protocol.Message {
 
 	value, err := msgpack.Marshal(data)
 	if err != nil {
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	resp := req.Success()
-	resp.Value = value
-	return resp
+	w.SetStatus(protocol.StatusOK)
+	w.SetValue(value)
 }

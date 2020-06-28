@@ -273,17 +273,20 @@ func (db *Olric) checkOwnership(part *partition) bool {
 	return false
 }
 
-func (db *Olric) moveDMapOperation(req *protocol.Message) *protocol.Message {
+func (db *Olric) moveDMapOperation(w, r protocol.MessageReadWriter) {
 	err := db.checkOperationStatus()
 	if err != nil {
-		return db.prepareResponse(req, err)
+		db.errorResponse(w, err)
+		return
 	}
 
+	req := r.(*protocol.DMapMessage)
 	box := &dmapbox{}
 	err = msgpack.Unmarshal(req.Value, box)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Failed to unmarshal dmap: %v", err)
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 
 	var part *partition
@@ -297,8 +300,9 @@ func (db *Olric) moveDMapOperation(req *protocol.Message) *protocol.Message {
 		db.log.V(2).Printf("[ERROR] Received DMap: %s on PartID: %d (backup: %v) doesn't belong to me",
 			box.Name, box.PartID, box.Backup)
 
-		return req.Error(protocol.StatusErrInvalidArgument,
-			fmt.Sprintf("partID: %d (backup: %v) doesn't belong to %s", box.PartID, box.Backup, db.this))
+		err := fmt.Errorf("partID: %d (backup: %v) doesn't belong to %s: %w", box.PartID, box.Backup, db.this, ErrInvalidArgument)
+		db.errorResponse(w, err)
+		return
 	}
 
 	db.log.V(2).Printf("[INFO] Received DMap (backup:%v): %s on PartID: %d",
@@ -307,7 +311,8 @@ func (db *Olric) moveDMapOperation(req *protocol.Message) *protocol.Message {
 	err = db.mergeDMaps(part, box)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Failed to merge dmap: %v", err)
-		return req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
-	return req.Success()
+	req.SetStatus(protocol.StatusOK)
 }
