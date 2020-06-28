@@ -333,21 +333,22 @@ func TestDMap_Query(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	m := &protocol.Message{
-		DMap:  "mydmap",
-		Value: value,
-		Extra: protocol.QueryExtra{PartID: 0},
-	}
+
+	req := protocol.NewDMapMessage(protocol.OpQuery)
+	req.SetDMap("mydmap")
+	req.SetValue(value)
+	req.SetExtra(protocol.QueryExtra{PartID: 0})
+
 	cc := &transport.ClientConfig{
 		Addrs:   []string{db.name},
 		MaxConn: 10,
 	}
 	cl := transport.NewClient(cc)
-	resp, err := cl.Request(protocol.OpQuery, m)
+	resp, err := cl.Request(req)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	if resp.Status != protocol.StatusOK {
+	if resp.Status() != protocol.StatusOK {
 		t.Fatalf("Expected protocol.StatusOK (%d). Got: %d", protocol.StatusOK, resp.Status)
 	}
 	var qr QueryResponse
@@ -399,21 +400,22 @@ func TestDMap_QueryEndOfKeySpace(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	m := &protocol.Message{
-		DMap:  "mydmap",
-		Value: value,
-		Extra: protocol.QueryExtra{PartID: 300},
-	}
+
+	req := protocol.NewDMapMessage(protocol.OpQuery)
+	req.SetDMap("mydmap")
+	req.SetValue(value)
+	req.SetExtra(protocol.QueryExtra{PartID: 300})
+
 	cc := &transport.ClientConfig{
 		Addrs:   []string{db.name},
 		MaxConn: 10,
 	}
 	cl := transport.NewClient(cc)
-	resp, err := cl.Request(protocol.OpQuery, m)
+	resp, err := cl.Request(req)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	if resp.Status != protocol.StatusErrEndOfQuery {
+	if resp.Status() != protocol.StatusErrEndOfQuery {
 		t.Fatalf("Expected protocol.ErrEndOfQuery (%d). Got: %d", protocol.StatusErrEndOfQuery, resp.Status)
 	}
 }

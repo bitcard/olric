@@ -20,9 +20,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go-multierror"
-
 	"github.com/buraksezer/olric/internal/protocol"
+	"github.com/hashicorp/go-multierror"
 )
 
 // Pipeline implements pipelining feature for Olric Binary Protocol.
@@ -33,14 +32,29 @@ import (
 type Pipeline struct {
 	c   *Client
 	m   sync.Mutex
-	buf *bytes.Buffer
+	buf *pipelineBuffer
+}
+
+// TODO: Use bufpool for this
+type pipelineBuffer struct {
+	*bytes.Buffer
+}
+
+func (p *pipelineBuffer) Close() error {
+	return nil
+}
+
+func newPipelineBuffer(data []byte) *pipelineBuffer {
+	return &pipelineBuffer{
+		Buffer: bytes.NewBuffer(data),
+	}
 }
 
 // NewPipeline returns a new Pipeline.
 func (c *Client) NewPipeline() *Pipeline {
 	return &Pipeline{
 		c:   c,
-		buf: new(bytes.Buffer),
+		buf: newPipelineBuffer(nil),
 	}
 }
 
@@ -53,17 +67,14 @@ func (p *Pipeline) Put(dmap, key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPut,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: data,
-		Extra: protocol.PutExtra{Timestamp: time.Now().UnixNano()},
-	}
-	return m.Encode(p.buf)
+
+	req := protocol.NewDMapMessage(protocol.OpPut)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(data)
+	req.SetExtra(protocol.PutExtra{Timestamp: time.Now().UnixNano()})
+	return req.Encode()
 }
 
 // PutEx appends a PutEx command to the underlying buffer with the given parameters.
@@ -75,20 +86,17 @@ func (p *Pipeline) PutEx(dmap, key string, value interface{}, timeout time.Durat
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPutEx,
-		},
-		DMap: dmap,
-		Key:  key,
-		Extra: protocol.PutExExtra{
-			TTL:       timeout.Nanoseconds(),
-			Timestamp: time.Now().UnixNano(),
-		},
-		Value: data,
-	}
-	return m.Encode(p.buf)
+
+	req := protocol.NewDMapMessage(protocol.OpPutEx)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(data)
+	req.SetExtra(protocol.PutExExtra{
+		TTL:       timeout.Nanoseconds(),
+		Timestamp: time.Now().UnixNano(),
+	})
+	return req.Encode()
 }
 
 // Get appends a Get command to the underlying buffer with the given parameters.
@@ -96,15 +104,11 @@ func (p *Pipeline) Get(dmap, key string) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpGet,
-		},
-		DMap: dmap,
-		Key:  key,
-	}
-	return m.Encode(p.buf)
+	req := protocol.NewDMapMessage(protocol.OpGet)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	return req.Encode()
 }
 
 // Delete appends a Delete command to the underlying buffer with the given parameters.
@@ -112,15 +116,11 @@ func (p *Pipeline) Delete(dmap, key string) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpDelete,
-		},
-		DMap: dmap,
-		Key:  key,
-	}
-	return m.Encode(p.buf)
+	req := protocol.NewDMapMessage(protocol.OpDelete)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	return req.Encode()
 }
 
 func (p *Pipeline) incrOrDecr(opcode protocol.OpCode, dmap, key string, delta int) error {
@@ -131,17 +131,13 @@ func (p *Pipeline) incrOrDecr(opcode protocol.OpCode, dmap, key string, delta in
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    opcode,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: value,
-		Extra: protocol.AtomicExtra{Timestamp: time.Now().UnixNano()},
-	}
-	return m.Encode(p.buf)
+	req := protocol.NewDMapMessage(opcode)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(value)
+	req.SetExtra(protocol.AtomicExtra{Timestamp: time.Now().UnixNano()})
+	return req.Encode()
 }
 
 // Incr appends an Incr command to the underlying buffer with the given parameters.
@@ -163,17 +159,14 @@ func (p *Pipeline) GetPut(dmap, key string, value interface{}) error {
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpGetPut,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: data,
-		Extra: protocol.AtomicExtra{Timestamp: time.Now().UnixNano()},
-	}
-	return m.Encode(p.buf)
+
+	req := protocol.NewDMapMessage(protocol.OpGetPut)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(data)
+	req.SetExtra(protocol.AtomicExtra{Timestamp: time.Now().UnixNano()})
+	return req.Encode()
 }
 
 // Destroy appends a Destroy command to the underlying buffer with the given parameters.
@@ -181,14 +174,10 @@ func (p *Pipeline) Destroy(dmap string) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpDestroy,
-		},
-		DMap: dmap,
-	}
-	return m.Encode(p.buf)
+	req := protocol.NewDMapMessage(protocol.OpDestroy)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	return req.Encode()
 }
 
 // PutIf appends a PutIf command to the underlying buffer.
@@ -208,20 +197,17 @@ func (p *Pipeline) PutIf(dmap, key string, value interface{}, flags int16) error
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPutIf,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: data,
-		Extra: protocol.PutIfExtra{
-			Flags:     flags,
-			Timestamp: time.Now().UnixNano(),
-		},
-	}
-	return m.Encode(p.buf)
+
+	req := protocol.NewDMapMessage(protocol.OpPutIf)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(data)
+	req.SetExtra(protocol.PutIfExtra{
+		Flags:     flags,
+		Timestamp: time.Now().UnixNano(),
+	})
+	return req.Encode()
 }
 
 // PutIfEx appends a PutIfEx command to the underlying buffer.
@@ -241,21 +227,18 @@ func (p *Pipeline) PutIfEx(dmap, key string, value interface{}, timeout time.Dur
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPutIfEx,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: data,
-		Extra: protocol.PutIfExExtra{
-			Flags:     flags,
-			TTL:       timeout.Nanoseconds(),
-			Timestamp: time.Now().UnixNano(),
-		},
-	}
-	return m.Encode(p.buf)
+
+	req := protocol.NewDMapMessage(protocol.OpPutIfEx)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(data)
+	req.SetExtra(protocol.PutIfExExtra{
+		Flags:     flags,
+		TTL:       timeout.Nanoseconds(),
+		Timestamp: time.Now().UnixNano(),
+	})
+	return req.Encode()
 }
 
 // Expire updates the expiry for the given key. It returns ErrKeyNotFound if the
@@ -264,19 +247,15 @@ func (p *Pipeline) Expire(dmap, key string, timeout time.Duration) error {
 	p.m.Lock()
 	defer p.m.Unlock()
 
-	m := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpExpire,
-		},
-		DMap: dmap,
-		Key:  key,
-		Extra: protocol.ExpireExtra{
-			TTL:       timeout.Nanoseconds(),
-			Timestamp: time.Now().UnixNano(),
-		},
-	}
-	return m.Encode(p.buf)
+	req := protocol.NewDMapMessage(protocol.OpExpire)
+	req.SetConn(p.buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetExtra(protocol.ExpireExtra{
+		TTL:       timeout.Nanoseconds(),
+		Timestamp: time.Now().UnixNano(),
+	})
+	return req.Encode()
 }
 
 // Flush flushes all the commands to the server using a single write call.
@@ -285,21 +264,20 @@ func (p *Pipeline) Flush() ([]PipelineResponse, error) {
 	defer p.m.Unlock()
 	defer p.buf.Reset()
 
-	req := &protocol.Message{
-		Value: p.buf.Bytes(),
-	}
-	resp, err := p.c.client.Request(protocol.OpPipeline, req)
+	req := protocol.NewDMapMessage(protocol.OpPipeline)
+	req.SetValue(p.buf.Bytes())
+	resp, err := p.c.client.Request(req)
 	if err != nil {
 		return nil, err
 	}
 
 	// Decode the pipelined messages from pipeline response.
-	conn := bytes.NewBuffer(resp.Value())
+	conn := newPipelineBuffer(resp.Value())
 	var responses []PipelineResponse
 	var resErr error
 	for {
-		var pres protocol.Message
-		err := pres.Decode(conn)
+		pres := protocol.NewDMapMessageFromRequest(conn)
+		err := pres.Decode()
 		if err == io.EOF {
 			break
 		}

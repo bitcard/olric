@@ -169,7 +169,6 @@ func (db *Olric) readRepair(name string, dm *dmap, winner *version, versions []*
 
 		// If readRepair is enabled, this function is called by every GET request.
 		var req *protocol.DMapMessage
-		var op protocol.OpCode
 		if winner.data.TTL == 0 {
 			req = protocol.NewDMapMessage(protocol.OpPutReplica)
 			req.SetDMap(name)

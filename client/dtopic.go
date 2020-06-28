@@ -39,15 +39,14 @@ func (c *Client) NewDTopic(name string) *DTopic {
 }
 
 func (dt *DTopic) Publish(msg interface{}) error {
-	data, err := dt.serializer.Marshal(msg)
+	value, err := dt.serializer.Marshal(msg)
 	if err != nil {
 		return err
 	}
-	m := &protocol.Message{
-		DMap:  dt.name,
-		Value: data,
-	}
-	resp, err := dt.client.Request(protocol.OpDTopicPublish, m)
+	req := protocol.NewDMapMessage(protocol.OpDTopicPublish)
+	req.SetDMap(dt.name)
+	req.SetValue(value)
+	resp, err := dt.client.Request(req)
 	if err != nil {
 		return err
 	}
@@ -61,14 +60,13 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 		return 0, err
 	}
 
-	m := &protocol.Message{
-		DMap: dt.name,
-		Extra: protocol.DTopicAddListenerExtra{
-			ListenerID: listenerID,
-			StreamID:   streamID,
-		},
-	}
-	resp, err := dt.client.Request(protocol.OpDTopicAddListener, m)
+	req := protocol.NewDMapMessage(protocol.OpDTopicAddListener)
+	req.SetDMap(dt.name)
+	req.SetExtra(protocol.DTopicAddListenerExtra{
+		ListenerID: listenerID,
+		StreamID:   streamID,
+	})
+	resp, err := dt.client.Request(req)
 	if err != nil {
 		_ = dt.removeStreamListener(listenerID)
 		return 0, err
@@ -102,13 +100,12 @@ func (dt *DTopic) AddListener(f func(olric.DTopicMessage)) (uint64, error) {
 }
 
 func (dt *DTopic) RemoveListener(listenerID uint64) error {
-	m := &protocol.Message{
-		DMap: dt.name,
-		Extra: protocol.DTopicRemoveListenerExtra{
-			ListenerID: listenerID,
-		},
-	}
-	resp, err := dt.client.Request(protocol.OpDTopicRemoveListener, m)
+	req := protocol.NewDMapMessage(protocol.OpDTopicRemoveListener)
+	req.SetDMap(dt.name)
+	req.SetExtra(protocol.DTopicAddListenerExtra{
+		ListenerID: listenerID,
+	})
+	resp, err := dt.client.Request(req)
 	if err != nil {
 		return err
 	}
@@ -128,10 +125,9 @@ func (dt *DTopic) RemoveListener(listenerID uint64) error {
 }
 
 func (dt *DTopic) Destroy() error {
-	m := &protocol.Message{
-		DMap: dt.name,
-	}
-	resp, err := dt.client.Request(protocol.OpDTopicDestroy, m)
+	req := protocol.NewDMapMessage(protocol.OpDTopicDestroy)
+	req.SetDMap(dt.name)
+	resp, err := dt.client.Request(req)
 	if err != nil {
 		return err
 	}

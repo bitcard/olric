@@ -78,13 +78,13 @@ func (db *Olric) stats() stats.Stats {
 	return s
 }
 
-func (db *Olric) statsOperation(w, r protocol.MessageReadWriter) {
+func (db *Olric) statsOperation(w, _ protocol.MessageReadWriter) {
 	// TODO: This should be a SystemMessage
-	req := r.(*protocol.DMapMessage)
 	s := db.stats()
 	value, err := msgpack.Marshal(s)
 	if err != nil {
-		req.Error(protocol.StatusInternalServerError, err)
+		db.errorResponse(w, err)
+		return
 	}
 	w.SetStatus(protocol.StatusOK)
 	w.SetValue(value)

@@ -42,14 +42,13 @@ func (c *Cursor) Close() {
 }
 
 func (c *Cursor) runQueryOnPartition(partID uint64) (olric.QueryResponse, error) {
-	m := &protocol.Message{
-		DMap:  c.dm.name,
-		Value: c.query,
-		Extra: protocol.QueryExtra{
-			PartID: partID,
-		},
-	}
-	resp, err := c.dm.client.Request(protocol.OpQuery, m)
+	req := protocol.NewDMapMessage(protocol.OpQuery)
+	req.SetDMap(c.dm.name)
+	req.SetValue(c.query)
+	req.SetExtra(protocol.QueryExtra{
+		PartID: partID,
+	})
+	resp, err := c.dm.client.Request(req)
 	if err != nil {
 		return nil, err
 	}
