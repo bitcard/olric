@@ -474,9 +474,6 @@ func (db *Olric) errorResponse(w protocol.MessageReadWriter, err error) {
 		}
 	}
 	w.SetValue(getError(err))
-	if w.OpCode() == protocol.OpGet {
-		fmt.Println(w, w.Status())
-	}
 
 	switch {
 	case err == ErrWriteQuorum, errors.Is(err, ErrWriteQuorum):

@@ -60,11 +60,11 @@ func TestPipeline_Put(t *testing.T) {
 	}
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Op != protocol.OpPut {
-			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPut, res.response.Op)
+		if res.response.OpCode() != protocol.OpPut {
+			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPut, res.response.OpCode())
 		}
-		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
+		if res.response.Status() != protocol.StatusOK {
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status())
 		}
 	}
 }
@@ -163,11 +163,11 @@ func TestPipeline_PutEx(t *testing.T) {
 	}
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Op != protocol.OpPutEx {
-			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPutEx, res.response.Op)
+		if res.response.OpCode() != protocol.OpPutEx {
+			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPutEx, res.response.OpCode())
 		}
-		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
+		if res.response.Status() != protocol.StatusOK {
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status())
 		}
 	}
 }
@@ -506,12 +506,12 @@ func TestPipeline_Expire(t *testing.T) {
 
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Op != protocol.OpPut && res.response.Op != protocol.OpExpire {
+		if res.response.OpCode() != protocol.OpPut && res.response.OpCode() != protocol.OpExpire {
 			t.Fatalf("Expected Op: %v or %v. Got: %v",
-				protocol.OpPut, protocol.OpExpire, res.response.Op)
+				protocol.OpPut, protocol.OpExpire, res.response.OpCode())
 		}
-		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
+		if res.response.Status() != protocol.StatusOK {
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status())
 		}
 	}
 
@@ -530,8 +530,8 @@ func TestPipeline_Expire(t *testing.T) {
 
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Status != protocol.StatusErrKeyNotFound {
-			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
+		if res.response.Status() != protocol.StatusErrKeyNotFound {
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status())
 		}
 	}
 }
@@ -588,13 +588,13 @@ func TestPipeline_PutIf(t *testing.T) {
 	}
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Op == protocol.OpPutIf {
-			if res.response.Status != protocol.StatusErrKeyFound {
-				t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyFound, res.response.Status)
+		if res.response.OpCode() == protocol.OpPutIf {
+			if res.response.Status() != protocol.StatusErrKeyFound {
+				t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyFound, res.response.Status())
 			}
 		}
 
-		if res.response.Op == protocol.OpGet {
+		if res.response.OpCode() == protocol.OpGet {
 			val, err := res.Get()
 			if err != nil {
 				t.Fatalf("Expected nil. Got: %v", err)
@@ -664,8 +664,8 @@ func TestPipeline_PutIfEx(t *testing.T) {
 
 	// Decode responses
 	for _, res := range responses {
-		if res.response.Status != protocol.StatusErrKeyNotFound {
-			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
+		if res.response.Status() != protocol.StatusErrKeyNotFound {
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status())
 		}
 	}
 }

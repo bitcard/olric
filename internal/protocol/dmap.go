@@ -167,9 +167,6 @@ func (d *DMapMessage) Decode() error {
 		d.value = make([]byte, vlen)
 		copy(d.value, buf.Next(vlen))
 	}
-	if d.Op == OpGet {
-		fmt.Println("decoded", d.StatusCode, d)
-	}
 	return nil
 }
 
