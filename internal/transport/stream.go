@@ -24,26 +24,26 @@ import (
 	"github.com/buraksezer/pool"
 )
 
-func readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, errCh chan<- error) {
+func readFromStream(conn io.ReadWriteCloser, bufCh chan<- protocol.MessageReadWriter, errCh chan<- error) {
 	for {
-		var msg protocol.Message
-		err := msg.Decode(conn)
+		msg := protocol.NewDMapMessageFromRequest(conn)
+		err := msg.Decode()
 		if err != nil {
 			errCh <- err
 			return
 		}
-		bufCh <- &msg
+		bufCh <- msg
 	}
 }
 
 // CreateStream creates a new Stream connection which provides a bidirectional communication channel between Olric nodes and clients.
-func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *protocol.Message, write <-chan *protocol.Message) error {
+func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- protocol.MessageReadWriter, write <-chan protocol.MessageReadWriter) error {
 	cpool, err := c.getPool(addr)
 	if err != nil {
 		return err
 	}
 
-	req := protocol.NewMessage(protocol.OpCreateStream)
+	req := protocol.NewDMapMessage(protocol.OpCreateStream)
 	conn, err := cpool.Get()
 	if err != nil {
 		return err
@@ -59,19 +59,21 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- *pro
 	}()
 
 	// Create a new byte stream
-	err = req.Encode(conn)
+	req.SetConn(conn)
+	err = req.Encode()
 	if err != nil {
 		return err
 	}
 
 	errCh := make(chan error, 1)
-	bufCh := make(chan *protocol.Message, 1)
+	bufCh := make(chan protocol.MessageReadWriter, 1)
 
 	go readFromStream(conn, bufCh, errCh)
 	for {
 		select {
 		case msg := <-write:
-			err = msg.Encode(conn)
+			msg.SetConn(conn)
+			err = msg.Encode()
 			if err != nil {
 				return err
 			}

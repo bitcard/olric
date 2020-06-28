@@ -297,8 +297,8 @@ func (db *Olric) exDTopicAddListenerOperation(w, r protocol.MessageReadWriter) {
 			return
 		}
 		m := protocol.NewStreamMessage(listenerID)
-		m.DMap = name
-		m.Value = value
+		m.SetDMap(name)
+		m.SetValue(value)
 		s.write <- m
 	}
 	err := db.dtopic.addRemoteListener(listenerID, name, f)

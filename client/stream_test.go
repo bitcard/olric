@@ -24,11 +24,11 @@ import (
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
-func mockCreateStream(ctx context.Context, _ string, read chan<- *protocol.Message, write <-chan *protocol.Message) error {
-	rq := protocol.NewMessage(protocol.OpStreamCreated)
-	rq.Extra = protocol.StreamCreatedExtra{
+func mockCreateStream(ctx context.Context, _ string, read chan<- protocol.MessageReadWriter, write <-chan protocol.MessageReadWriter) error {
+	rq := protocol.NewDMapMessage(protocol.OpStreamCreated)
+	rq.SetExtra(protocol.StreamCreatedExtra{
 		StreamID: rand.Uint64(),
-	}
+	})
 	read <- rq
 	for {
 		select {
@@ -66,21 +66,22 @@ func TestStream_EchoListener(t *testing.T) {
 		t.Fatalf("Expected nil. Got %v", err)
 	}
 	req := protocol.NewStreamMessage(listenerID)
-	req.DMap = "mydmap"
-	req.Key = "mykey"
-	req.Value = []byte("myvalue")
+	req.SetDMap("mydmap")
+	req.SetKey("mykey")
+	req.SetValue([]byte("myvalue"))
 	l.write <- req
 
 	select {
-	case msg := <-l.read:
-		if msg.DMap != "mydmap" {
-			t.Fatalf("Expected dmap: %s. Got: %s", req.DMap, msg.DMap)
+	case raw := <-l.read:
+		msg := raw.(*protocol.DMapMessage)
+		if msg.DMap() != "mydmap" {
+			t.Fatalf("Expected dmap: %s. Got: %s", req.DMap, msg.DMap())
 		}
-		if msg.Key != "mykey" {
-			t.Fatalf("Expected key: %s. Got: %s", req.Key, msg.Key)
+		if msg.Key() != "mykey" {
+			t.Fatalf("Expected key: %s. Got: %s", req.Key, msg.Key())
 		}
-		if !bytes.Equal(msg.Value, []byte("myvalue")) {
-			t.Fatalf("Expected value: %s. Got: %s", string(req.Value), msg.Value)
+		if !bytes.Equal(msg.Value(), []byte("myvalue")) {
+			t.Fatalf("Expected value: %s. Got: %s", string(req.Value()), msg.Value)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatalf("No message received from listener")
@@ -168,24 +169,25 @@ func TestStream_MultipleListener(t *testing.T) {
 
 	for id, l := range listeners {
 		req := protocol.NewStreamMessage(id)
-		req.DMap = "mydmap"
-		req.Key = "mykey"
-		req.Value = []byte("myvalue")
+		req.SetDMap("mydmap")
+		req.SetKey("mykey")
+		req.SetValue([]byte("myvalue"))
 
 		l.write <- req
 
 		select {
-		case msg := <-l.read:
-			if msg.DMap != "mydmap" {
+		case raw := <-l.read:
+			msg := raw.(*protocol.DMapMessage)
+			if msg.DMap() != "mydmap" {
 				t.Fatalf("Expected dmap: %s. Got: %s", req.DMap, msg.DMap)
 			}
-			if msg.Key != "mykey" {
+			if msg.Key() != "mykey" {
 				t.Fatalf("Expected key: %s. Got: %s", req.Key, msg.Key)
 			}
-			if !bytes.Equal(msg.Value, []byte("myvalue")) {
-				t.Fatalf("Expected value: %s. Got: %s", string(req.Value), msg.Value)
+			if !bytes.Equal(msg.Value(), []byte("myvalue")) {
+				t.Fatalf("Expected value: %s. Got: %s", string(req.Value()), msg.Value)
 			}
-			listenerID := msg.Extra.(protocol.StreamMessageExtra).ListenerID
+			listenerID := msg.Extra().(protocol.StreamMessageExtra).ListenerID
 			if listenerID != id {
 				t.Fatalf("Expected ListenerID: %d. Got: %d", id, listenerID)
 			}

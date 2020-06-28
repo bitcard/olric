@@ -28,15 +28,15 @@ import (
 // About the hack: This looks weird, but I need to mock client.CreateStream function to test streams
 // independently. I don't want to use a mocking library for this. So I created a function named
 // createStreamFunction and I overwrite that function in test.
-var createStreamFunction func(context.Context, string, chan<- *protocol.Message, <-chan *protocol.Message) error
+var createStreamFunction func(context.Context, string, chan<- protocol.MessageReadWriter, <-chan protocol.MessageReadWriter) error
 
 var errTooManyListener = errors.New("stream has too many listeners")
 
 const maxListenersPerStream = 1024
 
 type listener struct {
-	read   chan *protocol.Message
-	write  chan *protocol.Message
+	read   chan protocol.MessageReadWriter
+	write  chan protocol.MessageReadWriter
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -44,8 +44,8 @@ type listener struct {
 func newListener() *listener {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &listener{
-		read:   make(chan *protocol.Message, 1),
-		write:  make(chan *protocol.Message, 1),
+		read:   make(chan protocol.MessageReadWriter, 1),
+		write:  make(chan protocol.MessageReadWriter, 1),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -57,8 +57,8 @@ type stream struct {
 	mu sync.RWMutex
 
 	listeners map[uint64]*listener
-	read      chan *protocol.Message
-	write     chan *protocol.Message
+	read      chan protocol.MessageReadWriter
+	write     chan protocol.MessageReadWriter
 	errCh     chan error
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -79,10 +79,10 @@ func (c *Client) listenStream(s *stream) {
 		case msg := <-s.read:
 			s.mu.RLock()
 			for id, l := range s.listeners {
-				if msg.Op != protocol.OpStreamMessage {
+				if msg.OpCode() != protocol.OpStreamMessage {
 					continue
 				}
-				if msg.Extra.(protocol.StreamMessageExtra).ListenerID == id {
+				if msg.Extra().(protocol.StreamMessageExtra).ListenerID == id {
 					l.read <- msg
 				}
 			}
@@ -97,8 +97,8 @@ func (c *Client) createStream() (uint64, *stream, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	s := &stream{
 		listeners: make(map[uint64]*listener),
-		read:      make(chan *protocol.Message, 1),
-		write:     make(chan *protocol.Message, 1),
+		read:      make(chan protocol.MessageReadWriter, 1),
+		write:     make(chan protocol.MessageReadWriter, 1),
 		errCh:     make(chan error, 1),
 		ctx:       ctx,
 		cancel:    cancel,
@@ -121,11 +121,11 @@ func (c *Client) createStream() (uint64, *stream, error) {
 	case err := <-s.errCh:
 		return 0, nil, err
 	case msg := <-s.read:
-		if msg.Op != protocol.OpStreamCreated {
-			return 0, nil, fmt.Errorf("server returned OpCode: %d instead of %d", msg.Op, protocol.OpStreamCreated)
+		if msg.OpCode() != protocol.OpStreamCreated {
+			return 0, nil, fmt.Errorf("server returned OpCode: %d instead of %d", msg.OpCode(), protocol.OpStreamCreated)
 		}
 
-		streamID := msg.Extra.(protocol.StreamCreatedExtra).StreamID
+		streamID := msg.Extra().(protocol.StreamCreatedExtra).StreamID
 		c.streams.m[streamID] = s
 		c.wg.Add(1)
 		go c.listenStream(s)

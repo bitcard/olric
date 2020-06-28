@@ -17,7 +17,6 @@ package protocol
 
 import (
 	"encoding/binary"
-	"fmt"
 	"io"
 	"strings"
 
@@ -60,6 +59,10 @@ type MessageReadWriter interface {
 
 	Conn() io.ReadWriteCloser
 
+	SetExtra(interface{})
+
+	Extra() interface{}
+
 	Response() MessageReadWriter
 }
 
@@ -91,30 +94,11 @@ type Header struct {
 	BodyLen  uint32     // 4
 }
 
-// Message defines a protocol message in Olric Binary Protocol.
-type Message struct {
-	Header             // [0..10]
-	Extra  interface{} // [11..(m-1)] Command specific extras (In)
-	DMap   string      // [m..(n-1)] dmap (as needed, length in Header)
-	Key    string      // [n..(x-1)] key (as needed, length in Header)
-	Value  []byte      // [x..y] value (as needed, length in Header)
-	conn   io.ReadWriteCloser
-}
-
-func NewMessage(opcode OpCode) *Message {
-	return &Message{
-		Header: Header{
-			Magic: MagicReq,
-			Op:    opcode,
-		},
-	}
-}
-
-func NewStreamMessage(listenerID uint64) *Message {
-	m := NewMessage(OpStreamMessage)
-	m.Extra = StreamMessageExtra{
+func NewStreamMessage(listenerID uint64) *DMapMessage {
+	m := NewDMapMessage(OpStreamMessage)
+	m.SetExtra(StreamMessageExtra{
 		ListenerID: listenerID,
-	}
+	})
 	return m
 }
 
@@ -130,92 +114,4 @@ func filterNetworkErrors(err error) error {
 		return ErrConnClosed
 	}
 	return err
-}
-
-// Decode reads a whole protocol message(including the value) from given connection
-// by decoding it.
-func (m *Message) Decode(conn io.Reader) error {
-	buf := pool.Get()
-	defer pool.Put(buf)
-
-	_, err := io.CopyN(buf, conn, headerSize)
-	if err != nil {
-		return filterNetworkErrors(err)
-	}
-	err = binary.Read(buf, binary.BigEndian, &m.Header)
-	if err != nil {
-		return err
-	}
-	if m.Magic != MagicReq && m.Magic != MagicRes {
-		return fmt.Errorf("invalid message")
-	}
-
-	// Decode key, dmap name and message extras here.
-	_, err = io.CopyN(buf, conn, int64(m.BodyLen))
-	if err != nil {
-		return filterNetworkErrors(err)
-	}
-
-	if m.Magic == MagicReq && m.ExtraLen > 0 {
-		raw := buf.Next(int(m.ExtraLen))
-		extra, err := loadExtras(raw, m.Op)
-		if err != nil {
-			return err
-		}
-		m.Extra = extra
-	}
-	m.DMap = string(buf.Next(int(m.DMapLen)))
-	m.Key = string(buf.Next(int(m.KeyLen)))
-
-	// There is no maximum value for BodyLen which includes ValueLen.
-	// So our limit is available memory amount at the time of operation.
-	// Please note that maximum partition size should not exceed 50MB for a smooth operation.
-	vlen := int(m.BodyLen) - int(m.ExtraLen) - int(m.KeyLen) - int(m.DMapLen)
-	if vlen != 0 {
-		m.Value = make([]byte, vlen)
-		copy(m.Value, buf.Next(vlen))
-	}
-	return nil
-}
-
-// Encode writes a protocol message to given TCP connection by encoding it.
-func (m *Message) Encode(conn io.Writer) error {
-	buf := pool.Get()
-	defer pool.Put(buf)
-
-	m.DMapLen = uint16(len(m.DMap))
-	m.KeyLen = uint16(len(m.Key))
-	if m.Extra != nil {
-		m.ExtraLen = uint8(binary.Size(m.Extra))
-	}
-	m.BodyLen = uint32(len(m.DMap) + len(m.Key) + len(m.Value) + int(m.ExtraLen))
-	err := binary.Write(buf, binary.BigEndian, m.Header)
-	if err != nil {
-		return err
-	}
-
-	if m.Extra != nil {
-		err = binary.Write(buf, binary.BigEndian, m.Extra)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err = buf.WriteString(m.DMap)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.WriteString(m.Key)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.Write(m.Value)
-	if err != nil {
-		return err
-	}
-
-	_, err = buf.WriteTo(conn)
-	return filterNetworkErrors(err)
 }

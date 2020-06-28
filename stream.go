@@ -34,8 +34,8 @@ type streams struct {
 // streams provides a bidirectional communication channel between Olric nodes and clients. It can also be used
 // for node-to-node communication.
 type stream struct {
-	read   chan *protocol.Message
-	write  chan *protocol.Message
+	read   chan protocol.MessageReadWriter
+	write  chan protocol.MessageReadWriter
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -44,7 +44,7 @@ type stream struct {
 func (s *stream) close() error {
 	defer s.cancel()
 
-	req := protocol.NewMessage(protocol.OpStreamClosed)
+	req := protocol.NewDMapMessage(protocol.OpStreamClosed)
 	select {
 	case s.write <- req:
 		return nil
@@ -53,17 +53,17 @@ func (s *stream) close() error {
 	return fmt.Errorf("impossible to send StreamClosed message: channel busy")
 }
 
-func (db *Olric) readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, errCh chan<- error) {
+func (db *Olric) readFromStream(conn io.ReadWriteCloser, bufCh chan<- protocol.MessageReadWriter, errCh chan<- error) {
 	defer db.wg.Done()
 
 	for {
-		var msg protocol.Message
-		err := msg.Decode(conn)
+		msg := protocol.NewDMapMessageFromRequest(conn)
+		err := msg.Decode()
 		if err != nil {
 			errCh <- err
 			return
 		}
-		bufCh <- &msg
+		bufCh <- msg
 	}
 }
 
@@ -76,8 +76,8 @@ func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 	ctx, cancel := context.WithCancel(context.Background())
 	db.streams.mu.Lock()
 	s := &stream{
-		read:   make(chan *protocol.Message, 1),
-		write:  make(chan *protocol.Message, 1),
+		read:   make(chan protocol.MessageReadWriter, 1),
+		write:  make(chan protocol.MessageReadWriter, 1),
 		ctx:    ctx,
 		cancel: cancel,
 	}
@@ -85,7 +85,7 @@ func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 	db.streams.mu.Unlock()
 
 	errCh := make(chan error, 1)
-	bufCh := make(chan *protocol.Message, 1)
+	bufCh := make(chan protocol.MessageReadWriter, 1)
 	db.wg.Add(1)
 	go db.readFromStream(conn, bufCh, errCh)
 
@@ -95,10 +95,10 @@ func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 		db.streams.mu.Unlock()
 	}()
 
-	rq := protocol.NewMessage(protocol.OpStreamCreated)
-	rq.Extra = protocol.StreamCreatedExtra{
+	rq := protocol.NewDMapMessage(protocol.OpStreamCreated)
+	rq.SetExtra(protocol.StreamCreatedExtra{
 		StreamID: streamID,
-	}
+	})
 	s.write <- rq
 loop:
 	for {
@@ -110,7 +110,8 @@ loop:
 			// server is gone
 			break loop
 		case msg := <-s.write:
-			err := msg.Encode(conn)
+			msg.SetConn(conn)
+			err := msg.Encode()
 			if err != nil {
 				db.errorResponse(w, err)
 				return

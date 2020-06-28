@@ -39,8 +39,8 @@ func TestStream_CreateStream(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	readCh := make(chan *protocol.Message, 1)
-	writeCh := make(chan *protocol.Message, 1)
+	readCh := make(chan protocol.MessageReadWriter, 1)
+	writeCh := make(chan protocol.MessageReadWriter, 1)
 	go func() {
 		err = db.client.CreateStream(ctx, db.this.String(), readCh, writeCh)
 		if err != nil {
@@ -52,12 +52,13 @@ func TestStream_CreateStream(t *testing.T) {
 loop:
 	for {
 		select {
-		case msg := <-readCh:
-			if msg.Op != protocol.OpStreamCreated {
+		case raw := <-readCh:
+			msg := raw.(*protocol.DMapMessage)
+			if msg.OpCode() != protocol.OpStreamCreated {
 				t.Fatalf("Expected OpCode %d: Got: %d", protocol.OpStreamCreated, msg.Op)
 			}
 
-			streamID := msg.Extra.(protocol.StreamCreatedExtra).StreamID
+			streamID := msg.Extra().(protocol.StreamCreatedExtra).StreamID
 			db.streams.mu.RLock()
 			_, ok := db.streams.m[streamID]
 			db.streams.mu.RUnlock()
@@ -88,8 +89,8 @@ func TestStream_EchoMessage(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	readCh := make(chan *protocol.Message, 1)
-	writeCh := make(chan *protocol.Message, 1)
+	readCh := make(chan protocol.MessageReadWriter, 1)
+	writeCh := make(chan protocol.MessageReadWriter, 1)
 	go func() {
 		err = db.client.CreateStream(ctx, db.this.String(), readCh, writeCh)
 		if err != nil {
@@ -98,8 +99,8 @@ func TestStream_EchoMessage(t *testing.T) {
 		close(streamClosed)
 	}()
 
-	f := func(m *protocol.Message) {
-		streamID := m.Extra.(protocol.StreamCreatedExtra).StreamID
+	f := func(m protocol.MessageReadWriter) {
+		streamID := m.Extra().(protocol.StreamCreatedExtra).StreamID
 		db.streams.mu.RLock()
 		s, _ := db.streams.m[streamID]
 		db.streams.mu.RUnlock()
@@ -110,26 +111,27 @@ func TestStream_EchoMessage(t *testing.T) {
 loop:
 	for {
 		select {
-		case msg := <-readCh:
-			if msg.Op == protocol.OpStreamCreated {
+		case raw := <-readCh:
+			msg := raw.(*protocol.DMapMessage)
+			if msg.OpCode() == protocol.OpStreamCreated {
 				go f(msg)
 				// Stream is created. Now, we are able to do write or read on this bidirectional channel.
 				//
 				// Send a test message
-				req := protocol.NewMessage(protocol.OpPut)
-				req.DMap = "echo-test-dmap"
-				req.Key = "echo-test-key"
-				req.Value = []byte("echo-test-value")
+				req := protocol.NewDMapMessage(protocol.OpPut)
+				req.SetDMap("echo-test-dmap")
+				req.SetKey("echo-test-key")
+				req.SetValue([]byte("echo-test-value"))
 				writeCh <- req
-			} else if msg.Op == protocol.OpPut {
-				if msg.DMap != "echo-test-dmap" {
+			} else if msg.OpCode() == protocol.OpPut {
+				if msg.DMap() != "echo-test-dmap" {
 					t.Fatalf("Expected msg.dmap: echo-test-dmap. Got: %s", msg.DMap)
 				}
-				if msg.Key != "echo-test-key" {
+				if msg.Key() != "echo-test-key" {
 					t.Fatalf("Expected msg.key: echo-test-key. Got: %s", msg.Key)
 				}
-				if bytes.Equal(msg.Value, []byte("echo-test-dmap")) {
-					t.Fatalf("Expected msg.value: echo-test-value. Got: %s", string(msg.Value))
+				if bytes.Equal(msg.Value(), []byte("echo-test-dmap")) {
+					t.Fatalf("Expected msg.value: echo-test-value. Got: %s", string(msg.Value()))
 				}
 				break loop
 			} else {

@@ -15,7 +15,6 @@
 package olric
 
 import (
-	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func TestPipeline(t *testing.T) {
 		}
 	}()
 
-	var buf bytes.Buffer
+	buf := newPipelineConn(nil)
 	dmap := "test-dmap"
 	key := "test-key"
 	rawval := "test-value"
@@ -44,17 +43,13 @@ func TestPipeline(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	req := protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPut,
-		},
-		DMap:  dmap,
-		Key:   key,
-		Value: value,
-		Extra: protocol.PutExtra{Timestamp: time.Now().UnixNano()},
-	}
-	err = req.Encode(&buf)
+	req := protocol.NewDMapMessage(protocol.OpPut)
+	req.SetConn(buf)
+	req.SetDMap(dmap)
+	req.SetKey(key)
+	req.SetValue(value)
+	req.SetExtra(protocol.PutExtra{Timestamp: time.Now().UnixNano()})
+	err = req.Encode()
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
