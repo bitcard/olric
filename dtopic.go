@@ -180,7 +180,7 @@ func (db *Olric) NewDTopic(name string) (*DTopic, error) {
 
 func (db *Olric) publishDTopicMessageOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	rawmsg, err := db.unmarshalValue(req.Value)
+	rawmsg, err := db.unmarshalValue(req.Value())
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -191,8 +191,8 @@ func (db *Olric) publishDTopicMessageOperation(w, r protocol.MessageReadWriter) 
 		return
 	}
 
-	// req.DMap is a wrong name here. We will refactor the protocol and use a generic name.
-	err = db.dtopic.dispatch(req.DMap, &msg)
+	// req.DMap() is a wrong name here. We will refactor the protocol and use a generic name.
+	err = db.dtopic.dispatch(req.DMap(), &msg)
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -220,12 +220,11 @@ func (db *Olric) publishDTopicMessageToAddr(member discovery.Member, topic strin
 	if err != nil {
 		return err
 	}
-	// TODO: We need to find a better name for DMap in this struct.
-	req := &protocol.Message{
-		DMap:  topic,
-		Value: data,
-	}
-	_, err = db.requestTo(member.String(), protocol.OpPublishDTopicMessage, req)
+	// TODO: DTopicMessage
+	req := protocol.NewDMapMessage(protocol.OpPublishDTopicMessage)
+	req.SetDMap(topic)
+	req.SetValue(data)
+	_, err = db.requestTo(member.String(), req)
 	if err != nil {
 		db.log.V(2).Printf("[ERROR] Failed to publish message to %s: %v", member, err)
 		return err
@@ -266,8 +265,8 @@ func (db *Olric) publishDTopicMessage(topic string, msg *DTopicMessage) error {
 
 func (db *Olric) exDTopicAddListenerOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	name := req.DMap
-	streamID := req.Extra.(protocol.DTopicAddListenerExtra).StreamID
+	name := req.DMap()
+	streamID := req.Extra().(protocol.DTopicAddListenerExtra).StreamID
 	db.streams.mu.RLock()
 	_, ok := db.streams.m[streamID]
 	db.streams.mu.RUnlock()
@@ -278,7 +277,7 @@ func (db *Olric) exDTopicAddListenerOperation(w, r protocol.MessageReadWriter) {
 	}
 
 	// Local listener
-	listenerID := req.Extra.(protocol.DTopicAddListenerExtra).ListenerID
+	listenerID := req.Extra().(protocol.DTopicAddListenerExtra).ListenerID
 
 	f := func(msg DTopicMessage) {
 		db.streams.mu.RLock()
@@ -312,7 +311,7 @@ func (db *Olric) exDTopicAddListenerOperation(w, r protocol.MessageReadWriter) {
 
 func (db *Olric) exDTopicPublishOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	msg, err := db.unmarshalValue(req.Value)
+	msg, err := db.unmarshalValue(req.Value())
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -322,7 +321,7 @@ func (db *Olric) exDTopicPublishOperation(w, r protocol.MessageReadWriter) {
 		PublisherAddr: "",
 		PublishedAt:   time.Now().UnixNano(),
 	}
-	err = db.publishDTopicMessage(req.DMap, tm)
+	err = db.publishDTopicMessage(req.DMap(), tm)
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -348,12 +347,12 @@ func (dt *DTopic) AddListener(f func(DTopicMessage)) (uint64, error) {
 
 func (db *Olric) exDTopicRemoveListenerOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	extra, ok := req.Extra.(protocol.DTopicRemoveListenerExtra)
+	extra, ok := req.Extra().(protocol.DTopicRemoveListenerExtra)
 	if !ok {
-		db.errorResponse(w, fmt.Errorf("%w: wrong Extra type", ErrInvalidArgument))
+		db.errorResponse(w, fmt.Errorf("%w: wrong extra type", ErrInvalidArgument))
 		return
 	}
-	err := db.dtopic.removeListener(req.DMap, extra.ListenerID)
+	err := db.dtopic.removeListener(req.DMap(), extra.ListenerID)
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -368,8 +367,8 @@ func (dt *DTopic) RemoveListener(listenerID uint64) error {
 
 func (db *Olric) destroyDTopicOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	// req.DMap is topic name in this context. This confusion will be fixed.
-	db.dtopic.destroy(req.DMap)
+	// req.DMap() is topic name in this context. This confusion will be fixed.
+	db.dtopic.destroy(req.DMap())
 	w.SetStatus(protocol.StatusOK)
 }
 
@@ -385,11 +384,10 @@ func (db *Olric) destroyDTopicOnCluster(topic string) error {
 
 		member := member // https://golang.org/doc/faq#closures_and_goroutines
 		g.Go(func() error {
-			// TODO: We need to find a better name for DMap in this struct.
-			req := &protocol.Message{
-				DMap: topic,
-			}
-			_, err := db.requestTo(member.String(), protocol.OpDestroyDTopic, req)
+			// TODO: DTopicMessage
+			req := protocol.NewDMapMessage(protocol.OpDestroyDTopic)
+			req.SetDMap(topic)
+			_, err := db.requestTo(member.String(), req)
 			if err != nil {
 				db.log.V(2).Printf("[ERROR] Failed to call Destroy on %s, topic: %s : %v", member, topic, err)
 				return err
@@ -402,7 +400,7 @@ func (db *Olric) destroyDTopicOnCluster(topic string) error {
 
 func (db *Olric) exDTopicDestroyOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	err := db.destroyDTopicOnCluster(req.DMap)
+	err := db.destroyDTopicOnCluster(req.DMap())
 	if err != nil {
 		db.errorResponse(w, err)
 		return

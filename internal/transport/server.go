@@ -115,14 +115,13 @@ func (s *Server) controlConnLifeCycle(conn io.ReadWriteCloser, connStatus *uint3
 
 // processMessage waits for a new request, handles it and returns the appropriate response.
 func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) error {
-	var req, resp protocol.MessageReadWriter
+	var req protocol.MessageReadWriter
 	code, err := protocol.ExtractMagic(conn)
 	if err != nil {
 		return err
 	}
 	if code == protocol.MagicDMapReq {
-		req = protocol.NewDMapMessageRequest(conn)
-		resp = protocol.NewDMapMessageResponse(conn)
+		req = protocol.NewDMapMessageFromRequest(conn)
 	} else {
 		// TODO: Return a proper error
 		return fmt.Errorf("invalid magic")
@@ -140,6 +139,7 @@ func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) err
 	// Mark connection as idle before start waiting a new request
 	defer atomic.StoreUint32(connStatus, idleConn)
 
+	resp := req.Response()
 	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
 	s.dispatcher(resp, req)
 	return resp.Encode()

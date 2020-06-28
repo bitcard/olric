@@ -37,10 +37,10 @@ func newPipelineConn(data []byte) *pipelineConn {
 
 func (db *Olric) pipelineOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	conn := newPipelineConn(req.Value)
+	conn := newPipelineConn(req.Value())
 	// Decode the pipelined messages into an in-memory buffer.
 	for {
-		preq := protocol.NewDMapMessageRequest(conn)
+		preq := protocol.NewDMapMessageFromRequest(conn)
 		err := preq.Decode()
 		if err == io.EOF {
 			// It's done. The last message has been read.
@@ -59,17 +59,18 @@ func (db *Olric) pipelineOperation(w, r protocol.MessageReadWriter) {
 			preq.SetValue([]byte(ErrUnknownOperation.Error()))
 			continue
 		}
-		pres := protocol.NewDMapMessageResponse(conn)
+
+		presp := preq.Response()
 		// Call its function to prepare a response.
-		f(pres, preq)
-		err = pres.Encode()
+		f(presp, preq)
+		err = presp.Encode()
 		if err != nil {
 			db.errorResponse(w, err)
 			return
 		}
 	}
 
-	// Create a success response and assign pipelined responses as Value.
+	// Create a success response and assign pipelined responses as value.
 	w.SetStatus(protocol.StatusOK)
 	w.SetValue(conn.Bytes())
 }

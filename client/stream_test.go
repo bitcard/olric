@@ -74,13 +74,13 @@ func TestStream_EchoListener(t *testing.T) {
 	select {
 	case msg := <-l.read:
 		if msg.DMap != "mydmap" {
-			t.Fatalf("Expected DMap: %s. Got: %s", req.DMap, msg.DMap)
+			t.Fatalf("Expected dmap: %s. Got: %s", req.DMap, msg.DMap)
 		}
 		if msg.Key != "mykey" {
-			t.Fatalf("Expected Key: %s. Got: %s", req.Key, msg.Key)
+			t.Fatalf("Expected key: %s. Got: %s", req.Key, msg.Key)
 		}
 		if !bytes.Equal(msg.Value, []byte("myvalue")) {
-			t.Fatalf("Expected Value: %s. Got: %s", string(req.Value), msg.Value)
+			t.Fatalf("Expected value: %s. Got: %s", string(req.Value), msg.Value)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatalf("No message received from listener")
@@ -177,13 +177,13 @@ func TestStream_MultipleListener(t *testing.T) {
 		select {
 		case msg := <-l.read:
 			if msg.DMap != "mydmap" {
-				t.Fatalf("Expected DMap: %s. Got: %s", req.DMap, msg.DMap)
+				t.Fatalf("Expected dmap: %s. Got: %s", req.DMap, msg.DMap)
 			}
 			if msg.Key != "mykey" {
-				t.Fatalf("Expected Key: %s. Got: %s", req.Key, msg.Key)
+				t.Fatalf("Expected key: %s. Got: %s", req.Key, msg.Key)
 			}
 			if !bytes.Equal(msg.Value, []byte("myvalue")) {
-				t.Fatalf("Expected Value: %s. Got: %s", string(req.Value), msg.Value)
+				t.Fatalf("Expected value: %s. Got: %s", string(req.Value), msg.Value)
 			}
 			listenerID := msg.Extra.(protocol.StreamMessageExtra).ListenerID
 			if listenerID != id {

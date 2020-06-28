@@ -123,7 +123,7 @@ func TestDMap_NilValue(t *testing.T) {
 	}()
 
 	key := "mykey"
-	// Create a new DMap instance and put a K/V pair.
+	// Create a new dmap instance and put a K/V pair.
 	dm, err := db.NewDMap("foobar")
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)

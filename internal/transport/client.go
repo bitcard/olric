@@ -127,14 +127,11 @@ func (c *Client) ClosePool(addr string) {
 }
 
 // RequestTo initiates a request-response cycle to given host.
-func (c *Client) RequestTo(addr string, op protocol.OpCode, req *protocol.Message) (*protocol.Message, error) {
+func (c *Client) RequestTo(addr string, req protocol.MessageReadWriter) (protocol.MessageReadWriter, error) {
 	cpool, err := c.getPool(addr)
 	if err != nil {
 		return nil, err
 	}
-
-	req.Magic = protocol.MagicReq
-	req.Op = op
 
 	conn, err := cpool.Get()
 	if err != nil {
@@ -158,23 +155,25 @@ func (c *Client) RequestTo(addr string, op protocol.OpCode, req *protocol.Messag
 		}
 	}()
 
-	err = req.Encode(conn)
+	req.SetConn(conn)
+	err = req.Encode()
 	if err != nil {
 		deadConn = true
 		return nil, err
 	}
 
-	var resp protocol.Message
-	err = resp.Decode(conn)
+	// Response is a shortcut to create a response message for the request.
+	resp := req.Response()
+	err = resp.Decode()
 	if err != nil {
 		deadConn = true
 		return nil, err
 	}
-	return &resp, err
+	return resp, err
 }
 
 // Request initiates a request-response cycle to randomly selected host.
-func (c *Client) Request(op protocol.OpCode, req *protocol.Message) (*protocol.Message, error) {
+func (c *Client) Request(req protocol.MessageReadWriter) (protocol.MessageReadWriter, error) {
 	addr := c.roundrobin.Get()
-	return c.RequestTo(addr, op, req)
+	return c.RequestTo(addr, req)
 }

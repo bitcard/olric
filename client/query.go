@@ -58,7 +58,7 @@ func (c *Cursor) runQueryOnPartition(partID uint64) (olric.QueryResponse, error)
 	}
 
 	var qr olric.QueryResponse
-	err = msgpack.Unmarshal(resp.Value, &qr)
+	err = msgpack.Unmarshal(resp.Value(), &qr)
 	if err != nil {
 		return nil, err
 	}
@@ -146,7 +146,7 @@ func (c *Cursor) Range(f func(key string, value interface{}) bool) error {
 	return <-errCh
 }
 
-// Query runs a distributed query on a DMap instance.
+// Query runs a distributed query on a dmap instance.
 // Olric supports a very simple query DSL and now, it only scans keys. The query DSL has very
 // few keywords:
 //

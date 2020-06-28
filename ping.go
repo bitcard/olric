@@ -25,7 +25,7 @@ func (db *Olric) pingOperation(w, _ protocol.MessageReadWriter) {
 // Ping sends a dummy protocol messsage to the given host. This is useful to
 // measure RTT between hosts. It also can be used as aliveness check.
 func (db *Olric) Ping(addr string) error {
-	req := &protocol.Message{}
-	_, err := db.requestTo(addr, protocol.OpPing, req)
+	req := protocol.NewDMapMessage(protocol.OpPing)
+	_, err := db.requestTo(addr, req)
 	return err
 }

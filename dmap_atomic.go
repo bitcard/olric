@@ -28,7 +28,7 @@ func (db *Olric) atomicIncrDecr(opr string, w *writeop, delta int) (int, error) 
 	defer func() {
 		err := db.locker.Unlock(atomicKey)
 		if err != nil {
-			db.log.V(3).Printf("[ERROR] Failed to release the fine grained lock for key: %s on DMap: %s: %v", w.key, w.dmap, err)
+			db.log.V(3).Printf("[ERROR] Failed to release the fine grained lock for key: %s on dmap: %s: %v", w.key, w.dmap, err)
 		}
 	}()
 
@@ -105,7 +105,7 @@ func (db *Olric) getPut(w *writeop) ([]byte, error) {
 	defer func() {
 		err := db.locker.Unlock(atomicKey)
 		if err != nil {
-			db.log.V(3).Printf("[ERROR] Failed to release the lock for key: %s on DMap: %s: %v", w.key, w.dmap, err)
+			db.log.V(3).Printf("[ERROR] Failed to release the lock for key: %s on dmap: %s: %v", w.key, w.dmap, err)
 		}
 	}()
 
@@ -154,7 +154,7 @@ func (dm *DMap) GetPut(key string, value interface{}) (interface{}, error) {
 func (db *Olric) exIncrDecrOperation(w, r protocol.MessageReadWriter) {
 	var delta interface{}
 	req := r.(*protocol.DMapMessage)
-	err := db.serializer.Unmarshal(req.Value, &delta)
+	err := db.serializer.Unmarshal(req.Value(), &delta)
 	if err != nil {
 		db.errorResponse(w, err)
 		return
@@ -166,8 +166,8 @@ func (db *Olric) exIncrDecrOperation(w, r protocol.MessageReadWriter) {
 	wo := &writeop{
 		opcode:        protocol.OpPut,
 		replicaOpcode: protocol.OpPutReplica,
-		dmap:          req.DMap,
-		key:           req.Key,
+		dmap:          req.DMap(),
+		key:           req.Key(),
 		timestamp:     time.Now().UnixNano(),
 	}
 	newval, err := db.atomicIncrDecr(op, wo, delta.(int))
@@ -190,9 +190,9 @@ func (db *Olric) exGetPutOperation(w, r protocol.MessageReadWriter) {
 	wo := &writeop{
 		opcode:        protocol.OpPut,
 		replicaOpcode: protocol.OpPutReplica,
-		dmap:          req.DMap,
-		key:           req.Key,
-		value:         req.Value,
+		dmap:          req.DMap(),
+		key:           req.Key(),
+		value:         req.Value(),
 		timestamp:     time.Now().UnixNano(),
 	}
 	oldval, err := db.getPut(wo)

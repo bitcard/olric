@@ -69,7 +69,7 @@ func (db *Olric) readFromStream(conn io.Reader, bufCh chan<- *protocol.Message, 
 
 func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	conn := req.GetConn()
+	conn := req.Conn()
 
 	// Now, we have a TCP socket here.
 	streamID := rand.Uint64()

@@ -141,7 +141,7 @@ func TestClient_Stats(t *testing.T) {
 	for partID, part := range s.Partitions {
 		total += part.Length
 		if _, ok := part.DMaps["mymap"]; !ok {
-			t.Fatalf("Expected DMap check result is true. Got false")
+			t.Fatalf("Expected dmap check result is true. Got false")
 		}
 		if len(part.PreviousOwners) != 0 {
 			t.Fatalf("Expected PreviosOwners list is empty. "+

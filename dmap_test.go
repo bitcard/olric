@@ -147,7 +147,7 @@ func syncClusterMembers(peers ...*Olric) {
 	for _, peer := range peers {
 		peer.rebalancer()
 	}
-	// Update routing table again to get correct responses from the high level DMap API.
+	// Update routing table again to get correct responses from the high level dmap API.
 	updateRouting()
 }
 
@@ -245,7 +245,7 @@ func TestDMap_Standalone(t *testing.T) {
 
 	key := "mykey"
 	value := "myvalue"
-	// Create a new DMap instance and put a K/V pair.
+	// Create a new dmap instance and put a K/V pair.
 	d, err := db.NewDMap("foobar")
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)

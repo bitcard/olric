@@ -511,45 +511,47 @@ func (db *Olric) errorResponse(w protocol.MessageReadWriter, err error) {
 	}
 }
 
-func (db *Olric) requestTo(addr string, opcode protocol.OpCode, req *protocol.Message) (*protocol.Message, error) {
-	resp, err := db.client.RequestTo(addr, opcode, req)
+func (db *Olric) requestTo(addr string, req protocol.MessageReadWriter) (protocol.MessageReadWriter, error) {
+	resp, err := db.client.RequestTo(addr, req)
 	if err != nil {
 		return nil, err
 	}
 
+	status := req.Status()
+
 	switch {
-	case resp.Status == protocol.StatusOK:
+	case status == protocol.StatusOK:
 		return resp, nil
-	case resp.Status == protocol.StatusInternalServerError:
-		return nil, errors.Wrap(ErrInternalServerError, string(resp.Value))
-	case resp.Status == protocol.StatusErrNoSuchLock:
+	case status == protocol.StatusInternalServerError:
+		return nil, errors.Wrap(ErrInternalServerError, string(resp.Value()))
+	case status == protocol.StatusErrNoSuchLock:
 		return nil, ErrNoSuchLock
-	case resp.Status == protocol.StatusErrLockNotAcquired:
+	case status == protocol.StatusErrLockNotAcquired:
 		return nil, ErrLockNotAcquired
-	case resp.Status == protocol.StatusErrKeyNotFound:
+	case status == protocol.StatusErrKeyNotFound:
 		return nil, ErrKeyNotFound
-	case resp.Status == protocol.StatusErrWriteQuorum:
+	case status == protocol.StatusErrWriteQuorum:
 		return nil, ErrWriteQuorum
-	case resp.Status == protocol.StatusErrReadQuorum:
+	case status == protocol.StatusErrReadQuorum:
 		return nil, ErrReadQuorum
-	case resp.Status == protocol.StatusErrOperationTimeout:
+	case status == protocol.StatusErrOperationTimeout:
 		return nil, ErrOperationTimeout
-	case resp.Status == protocol.StatusErrKeyFound:
+	case status == protocol.StatusErrKeyFound:
 		return nil, ErrKeyFound
-	case resp.Status == protocol.StatusErrClusterQuorum:
+	case status == protocol.StatusErrClusterQuorum:
 		return nil, ErrClusterQuorum
-	case resp.Status == protocol.StatusErrEndOfQuery:
+	case status == protocol.StatusErrEndOfQuery:
 		return nil, ErrEndOfQuery
-	case resp.Status == protocol.StatusErrUnknownOperation:
+	case status == protocol.StatusErrUnknownOperation:
 		return nil, ErrUnknownOperation
-	case resp.Status == protocol.StatusErrServerGone:
+	case status == protocol.StatusErrServerGone:
 		return nil, ErrServerGone
-	case resp.Status == protocol.StatusErrInvalidArgument:
+	case status == protocol.StatusErrInvalidArgument:
 		return nil, ErrInvalidArgument
-	case resp.Status == protocol.StatusErrKeyTooLarge:
+	case status == protocol.StatusErrKeyTooLarge:
 		return nil, ErrKeyTooLarge
 	}
-	return nil, fmt.Errorf("unknown status code: %d", resp.Status)
+	return nil, fmt.Errorf("unknown status code: %d", status)
 }
 
 func (db *Olric) isAlive() bool {

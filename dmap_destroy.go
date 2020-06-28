@@ -38,11 +38,10 @@ func (db *Olric) destroyDMap(name string) error {
 			}
 			defer sem.Release(1)
 
-			msg := &protocol.Message{
-				DMap: name,
-			}
+			req := protocol.NewDMapMessage(protocol.OpDestroyDMap)
+			req.SetDMap(name)
 			db.log.V(6).Printf("[DEBUG] Calling Destroy command on %s for %s", addr, name)
-			_, err := db.requestTo(addr, protocol.OpDestroyDMap, msg)
+			_, err := db.requestTo(addr, req)
 			if err != nil {
 				db.log.V(3).Printf("[ERROR] Failed to destroy dmap: %s on %s", name, addr)
 			}
@@ -52,16 +51,16 @@ func (db *Olric) destroyDMap(name string) error {
 	return g.Wait()
 }
 
-// Destroy flushes the given DMap on the cluster. You should know that there
+// Destroy flushes the given dmap on the cluster. You should know that there
 // is no global lock on DMaps. So if you call Put/PutEx and Destroy methods
-// concurrently on the cluster, Put/PutEx calls may set new values to the DMap.
+// concurrently on the cluster, Put/PutEx calls may set new values to the dmap.
 func (dm *DMap) Destroy() error {
 	return dm.db.destroyDMap(dm.name)
 }
 
 func (db *Olric) exDestroyOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	err := db.destroyDMap(req.DMap)
+	err := db.destroyDMap(req.DMap())
 	if err != nil {
 		db.errorResponse(w, err)
 	}
@@ -73,11 +72,11 @@ func (db *Olric) destroyDMapOperation(w, r protocol.MessageReadWriter) {
 	for partID := uint64(0); partID < db.config.PartitionCount; partID++ {
 		// Delete primary copies
 		part := db.partitions[partID]
-		part.m.Delete(req.DMap)
+		part.m.Delete(req.DMap())
 		// Delete from Backups
 		if db.config.ReplicaCount != 0 {
 			bpart := db.backups[partID]
-			bpart.m.Delete(req.DMap)
+			bpart.m.Delete(req.DMap())
 		}
 	}
 	w.SetStatus(protocol.StatusOK)

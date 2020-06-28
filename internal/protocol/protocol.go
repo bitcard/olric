@@ -43,10 +43,24 @@ const (
 
 type MessageReadWriter interface {
 	Encode() error
+
 	Decode() error
+
 	SetStatus(StatusCode)
+
+	Status() StatusCode
+
 	SetValue([]byte)
+
+	Value() []byte
+
 	OpCode() OpCode
+
+	SetConn(io.ReadWriteCloser)
+
+	Conn() io.ReadWriteCloser
+
+	Response() MessageReadWriter
 }
 
 func ExtractMagic(conn io.ReadWriteCloser) (MagicCode, error) {
@@ -81,21 +95,10 @@ type Header struct {
 type Message struct {
 	Header             // [0..10]
 	Extra  interface{} // [11..(m-1)] Command specific extras (In)
-	DMap   string      // [m..(n-1)] DMap (as needed, length in Header)
-	Key    string      // [n..(x-1)] Key (as needed, length in Header)
-	Value  []byte      // [x..y] Value (as needed, length in Header)
+	DMap   string      // [m..(n-1)] dmap (as needed, length in Header)
+	Key    string      // [n..(x-1)] key (as needed, length in Header)
+	Value  []byte      // [x..y] value (as needed, length in Header)
 	conn   io.ReadWriteCloser
-}
-
-func (m *Message) SetConn(conn io.ReadWriteCloser) {
-	m.conn = conn
-}
-
-func (m *Message) GetConn() (io.ReadWriteCloser, error) {
-	if m.conn == nil {
-		return nil, fmt.Errorf("conn is nil")
-	}
-	return m.conn, nil
 }
 
 func NewMessage(opcode OpCode) *Message {
@@ -147,7 +150,7 @@ func (m *Message) Decode(conn io.Reader) error {
 		return fmt.Errorf("invalid message")
 	}
 
-	// Decode Key, DMap name and message extras here.
+	// Decode key, dmap name and message extras here.
 	_, err = io.CopyN(buf, conn, int64(m.BodyLen))
 	if err != nil {
 		return filterNetworkErrors(err)

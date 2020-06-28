@@ -294,7 +294,7 @@ func (p *Pipeline) Flush() ([]PipelineResponse, error) {
 	}
 
 	// Decode the pipelined messages from pipeline response.
-	conn := bytes.NewBuffer(resp.Value)
+	conn := bytes.NewBuffer(resp.Value())
 	var responses []PipelineResponse
 	var resErr error
 	for {

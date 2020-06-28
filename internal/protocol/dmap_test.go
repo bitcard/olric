@@ -35,10 +35,11 @@ func newFakeTCPConn() *fakeTCPConn {
 
 func TestDMapMessage_Encode(t *testing.T) {
 	conn := newFakeTCPConn()
-	msg := NewDMapMessage(OpPut, conn)
-	msg.DMap = "mydmap"
-	msg.Key = "mykey"
-	msg.Value = []byte("myvalue")
+	msg := NewDMapMessage(OpPut)
+	msg.SetConn(conn)
+	msg.dmap = "mydmap"
+	msg.key = "mykey"
+	msg.value = []byte("myvalue")
 	err := msg.Encode()
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
@@ -49,10 +50,11 @@ func TestDMapMessage_Decode(t *testing.T) {
 	conn := newFakeTCPConn()
 
 	// Encode first
-	msg := NewDMapMessage(OpPut, conn)
-	msg.DMap = "mydmap"
-	msg.Key = "mykey"
-	msg.Value = []byte("myvalue")
+	msg := NewDMapMessage(OpPut)
+	msg.SetConn(conn)
+	msg.dmap = "mydmap"
+	msg.key = "mykey"
+	msg.value = []byte("myvalue")
 	err := msg.Encode()
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
@@ -68,21 +70,21 @@ func TestDMapMessage_Decode(t *testing.T) {
 
 	// Decode message from the TCP socket
 
-	req := NewDMapMessageRequest(conn)
+	req := NewDMapMessageFromRequest(conn)
 	err = req.Decode()
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	if req.DMap != "mydmap" {
-		t.Fatalf("Expected mydmap. Got: %v", req.DMap)
+	if req.DMap() != "mydmap" {
+		t.Fatalf("Expected mydmap. Got: %v", req.DMap())
 	}
 
-	if req.Key != "mykey" {
-		t.Fatalf("Expected mykey. Got: %v", req.Key)
+	if req.Key() != "mykey" {
+		t.Fatalf("Expected mykey. Got: %v", req.Key())
 	}
 
-	if !bytes.Equal(req.Value, []byte("myvalue")) {
-		t.Fatalf("Expected mykey. Got: %v", req.Key)
+	if !bytes.Equal(req.Value(), []byte("myvalue")) {
+		t.Fatalf("Expected mykey. Got: %v", req.Key())
 	}
 }

@@ -59,16 +59,12 @@ func TestPipeline(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	preq := &protocol.Message{
-		Header: protocol.Header{
-			Magic: protocol.MagicReq,
-			Op:    protocol.OpPipeline,
-		},
-		Value: buf.Bytes(),
-	}
-	resp := db.pipelineOperation(preq)
-	if resp.Status != protocol.StatusOK {
-		t.Fatalf("Expected status: %v. Got: %v", protocol.StatusOK, resp.Status)
+	preq := protocol.NewDMapMessage(protocol.OpPipeline)
+	preq.SetValue(buf.Bytes())
+	presp := preq.Response()
+	db.pipelineOperation(presp, preq)
+	if presp.Status() != protocol.StatusOK {
+		t.Fatalf("Expected status: %v. Got: %v", protocol.StatusOK, presp.Status)
 	}
 
 	dm, err := db.NewDMap(dmap)

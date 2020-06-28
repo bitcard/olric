@@ -123,13 +123,13 @@ loop:
 				writeCh <- req
 			} else if msg.Op == protocol.OpPut {
 				if msg.DMap != "echo-test-dmap" {
-					t.Fatalf("Expected msg.DMap: echo-test-dmap. Got: %s", msg.DMap)
+					t.Fatalf("Expected msg.dmap: echo-test-dmap. Got: %s", msg.DMap)
 				}
 				if msg.Key != "echo-test-key" {
-					t.Fatalf("Expected msg.Key: echo-test-key. Got: %s", msg.Key)
+					t.Fatalf("Expected msg.key: echo-test-key. Got: %s", msg.Key)
 				}
 				if bytes.Equal(msg.Value, []byte("echo-test-dmap")) {
-					t.Fatalf("Expected msg.Value: echo-test-value. Got: %s", string(msg.Value))
+					t.Fatalf("Expected msg.value: echo-test-value. Got: %s", string(msg.Value))
 				}
 				break loop
 			} else {

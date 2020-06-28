@@ -87,16 +87,16 @@ func New(c *Config) (*Client, error) {
 // Ping sends a dummy protocol messsage to the given host. This is useful to
 // measure RTT between hosts. It also can be used as aliveness check.
 func (c *Client) Ping(addr string) error {
-	req := &protocol.Message{}
-	_, err := c.client.RequestTo(addr, protocol.OpPing, req)
+	req := protocol.NewDMapMessage(protocol.OpPing)
+	_, err := c.client.RequestTo(addr, req)
 	return err
 }
 
 // Stats exposes some useful metrics to monitor an Olric node.
 func (c *Client) Stats(addr string) (stats.Stats, error) {
 	s := stats.Stats{}
-	req := &protocol.Message{}
-	resp, err := c.client.RequestTo(addr, protocol.OpStats, req)
+	req := protocol.NewDMapMessage(protocol.OpStats)
+	resp, err := c.client.RequestTo(addr, req)
 	if err != nil {
 		return s, err
 	}
@@ -105,7 +105,7 @@ func (c *Client) Stats(addr string) (stats.Stats, error) {
 		return s, err
 	}
 
-	err = msgpack.Unmarshal(resp.Value, &s)
+	err = msgpack.Unmarshal(resp.Value(), &s)
 	if err != nil {
 		return s, err
 	}
@@ -124,7 +124,7 @@ func (c *Client) Close() {
 	c.wg.Wait()
 }
 
-// NewDMap creates and returns a new DMap instance to access DMaps on the cluster.
+// NewDMap creates and returns a new dmap instance to access DMaps on the cluster.
 func (c *Client) NewDMap(name string) *DMap {
 	return &DMap{
 		Client: c,
@@ -132,37 +132,38 @@ func (c *Client) NewDMap(name string) *DMap {
 	}
 }
 
-func checkStatusCode(resp *protocol.Message) error {
+func checkStatusCode(resp protocol.MessageReadWriter) error {
+	status := resp.Status()
 	switch {
-	case resp.Status == protocol.StatusOK:
+	case status == protocol.StatusOK:
 		return nil
-	case resp.Status == protocol.StatusInternalServerError:
-		return errors.Wrap(olric.ErrInternalServerError, string(resp.Value))
-	case resp.Status == protocol.StatusErrNoSuchLock:
+	case status == protocol.StatusInternalServerError:
+		return errors.Wrap(olric.ErrInternalServerError, string(resp.Value()))
+	case status == protocol.StatusErrNoSuchLock:
 		return olric.ErrNoSuchLock
-	case resp.Status == protocol.StatusErrLockNotAcquired:
+	case status == protocol.StatusErrLockNotAcquired:
 		return olric.ErrLockNotAcquired
-	case resp.Status == protocol.StatusErrKeyNotFound:
+	case status == protocol.StatusErrKeyNotFound:
 		return olric.ErrKeyNotFound
-	case resp.Status == protocol.StatusErrWriteQuorum:
+	case status == protocol.StatusErrWriteQuorum:
 		return olric.ErrWriteQuorum
-	case resp.Status == protocol.StatusErrReadQuorum:
+	case status == protocol.StatusErrReadQuorum:
 		return olric.ErrReadQuorum
-	case resp.Status == protocol.StatusErrOperationTimeout:
+	case status == protocol.StatusErrOperationTimeout:
 		return olric.ErrOperationTimeout
-	case resp.Status == protocol.StatusErrKeyFound:
+	case status == protocol.StatusErrKeyFound:
 		return olric.ErrKeyFound
-	case resp.Status == protocol.StatusErrClusterQuorum:
+	case status == protocol.StatusErrClusterQuorum:
 		return olric.ErrClusterQuorum
-	case resp.Status == protocol.StatusErrEndOfQuery:
+	case status == protocol.StatusErrEndOfQuery:
 		return olric.ErrEndOfQuery
-	case resp.Status == protocol.StatusErrUnknownOperation:
+	case status == protocol.StatusErrUnknownOperation:
 		return olric.ErrUnknownOperation
-	case resp.Status == protocol.StatusErrInvalidArgument:
+	case status == protocol.StatusErrInvalidArgument:
 		return olric.ErrInvalidArgument
-	case resp.Status == protocol.StatusErrServerGone:
+	case status == protocol.StatusErrServerGone:
 		return olric.ErrServerGone
-	case resp.Status == protocol.StatusErrKeyTooLarge:
+	case status == protocol.StatusErrKeyTooLarge:
 		return olric.ErrKeyTooLarge
 	default:
 		return fmt.Errorf("unknown status: %v", resp.Status)

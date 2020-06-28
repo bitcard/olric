@@ -351,7 +351,7 @@ func TestDMap_Query(t *testing.T) {
 		t.Fatalf("Expected protocol.StatusOK (%d). Got: %d", protocol.StatusOK, resp.Status)
 	}
 	var qr QueryResponse
-	if err = msgpack.Unmarshal(resp.Value, &qr); err != nil {
+	if err = msgpack.Unmarshal(resp.Value(), &qr); err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 

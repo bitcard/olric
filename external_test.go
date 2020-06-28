@@ -89,7 +89,7 @@ func TestExternal_AtomicIncrDecr(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 	var val interface{}
-	err = db.serializer.Unmarshal(resp.Value, &val)
+	err = db.serializer.Unmarshal(resp.Value(), &val)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
@@ -141,9 +141,9 @@ func TestExternal_AtomicGetPut(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Expected nil. Got: %v", err)
 		}
-		if len(resp.Value) != 0 {
+		if len(resp.Value()) != 0 {
 			var oldval interface{}
-			err = db.serializer.Unmarshal(resp.Value, &oldval)
+			err = db.serializer.Unmarshal(resp.Value(), &oldval)
 			if err != nil {
 				t.Fatalf("Expected nil. Got: %v", err)
 			}

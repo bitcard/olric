@@ -64,7 +64,7 @@ func TestPipeline_Put(t *testing.T) {
 			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPut, res.response.Op)
 		}
 		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusOK, res.response.Status)
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
 		}
 	}
 }
@@ -167,7 +167,7 @@ func TestPipeline_PutEx(t *testing.T) {
 			t.Fatalf("Expected Op: %v. Got: %v", protocol.OpPutEx, res.response.Op)
 		}
 		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusOK, res.response.Status)
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
 		}
 	}
 }
@@ -511,7 +511,7 @@ func TestPipeline_Expire(t *testing.T) {
 				protocol.OpPut, protocol.OpExpire, res.response.Op)
 		}
 		if res.response.Status != protocol.StatusOK {
-			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusOK, res.response.Status)
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusOK, res.response.Status)
 		}
 	}
 
@@ -531,7 +531,7 @@ func TestPipeline_Expire(t *testing.T) {
 	// Decode responses
 	for _, res := range responses {
 		if res.response.Status != protocol.StatusErrKeyNotFound {
-			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
 		}
 	}
 }
@@ -590,7 +590,7 @@ func TestPipeline_PutIf(t *testing.T) {
 	for _, res := range responses {
 		if res.response.Op == protocol.OpPutIf {
 			if res.response.Status != protocol.StatusErrKeyFound {
-				t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusErrKeyFound, res.response.Status)
+				t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyFound, res.response.Status)
 			}
 		}
 
@@ -600,7 +600,7 @@ func TestPipeline_PutIf(t *testing.T) {
 				t.Fatalf("Expected nil. Got: %v", err)
 			}
 			if val.(int) > 100 {
-				t.Fatalf("Value changed: %v", val)
+				t.Fatalf("value changed: %v", val)
 			}
 		}
 	}
@@ -665,7 +665,7 @@ func TestPipeline_PutIfEx(t *testing.T) {
 	// Decode responses
 	for _, res := range responses {
 		if res.response.Status != protocol.StatusErrKeyNotFound {
-			t.Fatalf("Expected Status: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
+			t.Fatalf("Expected StatusCode: %v. Got: %v", protocol.StatusErrKeyNotFound, res.response.Status)
 		}
 	}
 }

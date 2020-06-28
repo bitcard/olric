@@ -29,65 +29,101 @@ const (
 
 // Header defines a message header for both request and response.
 type DMapMessageHeader struct {
-	Op       OpCode     // 1
-	DMapLen  uint16     // 2
-	KeyLen   uint16     // 2
-	ExtraLen uint8      // 1
-	Status   StatusCode // 1
-	BodyLen  uint32     // 4
+	Op         OpCode     // 1
+	DMapLen    uint16     // 2
+	KeyLen     uint16     // 2
+	ExtraLen   uint8      // 1
+	StatusCode StatusCode // 1
+	BodyLen    uint32     // 4
 }
 
 type DMapMessage struct {
-	Magic             MagicCode   // [0]
+	magic             MagicCode   // [0]
 	DMapMessageHeader             // [1..10]
-	Extra             interface{} // [11..(m-1)] Command specific extras (In)
-	DMap              string      // [m..(n-1)] DMap (as needed, length in Header)
-	Key               string      // [n..(x-1)] Key (as needed, length in Header)
-	Value             []byte      // [x..y] Value (as needed, length in Header)
+	extra             interface{} // [11..(m-1)] Command specific extras (In)
+	dmap              string      // [m..(n-1)] dmap (as needed, length in Header)
+	key               string      // [n..(x-1)] key (as needed, length in Header)
+	value             []byte      // [x..y] value (as needed, length in Header)
 	conn              io.ReadWriteCloser
 }
 
-func NewDMapMessage(opcode OpCode, conn io.ReadWriteCloser) *DMapMessage {
+func NewDMapMessage(opcode OpCode) *DMapMessage {
 	return &DMapMessage{
-		Magic: MagicDMapReq,
+		magic: MagicDMapReq,
 		DMapMessageHeader: DMapMessageHeader{
 			Op: opcode,
 		},
-		conn: conn,
 	}
 }
 
-func NewDMapMessageRequest(conn io.ReadWriteCloser) *DMapMessage {
+func NewDMapMessageFromRequest(conn io.ReadWriteCloser) *DMapMessage {
 	return &DMapMessage{
-		Magic:             MagicDMapReq,
+		magic:             MagicDMapReq,
 		DMapMessageHeader: DMapMessageHeader{},
 		conn:              conn,
 	}
 }
 
-func NewDMapMessageResponse(conn io.ReadWriteCloser) *DMapMessage {
+func (d *DMapMessage) Response() MessageReadWriter {
 	return &DMapMessage{
-		Magic:             MagicDMapRes,
-		DMapMessageHeader: DMapMessageHeader{},
-		conn:              conn,
+		magic: MagicDMapRes,
+		DMapMessageHeader: DMapMessageHeader{
+			Op: d.Op,
+		},
+		conn: d.conn,
 	}
 }
 
 func (d *DMapMessage) SetStatus(code StatusCode) {
-	d.Status = code
+	d.StatusCode = code
+}
+
+func (d *DMapMessage) Status() StatusCode {
+	return d.StatusCode
 }
 
 func (d *DMapMessage) SetValue(value []byte) {
-	d.Value = value
+	d.value = value
+}
+
+func (d *DMapMessage) Value() []byte {
+	return d.value
 }
 
 func (d *DMapMessage) OpCode() OpCode {
 	return d.Op
 }
 
-// TODO: Remove this after implementing StreamMessage type
-func (d *DMapMessage) GetConn() io.ReadWriteCloser {
+func (d *DMapMessage) SetConn(conn io.ReadWriteCloser) {
+	d.conn = conn
+}
+
+func (d *DMapMessage) Conn() io.ReadWriteCloser {
 	return d.conn
+}
+
+func (d *DMapMessage) SetDMap(dmap string) {
+	d.dmap = dmap
+}
+
+func (d *DMapMessage) DMap() string {
+	return d.dmap
+}
+
+func (d *DMapMessage) SetKey(key string) {
+	d.key = key
+}
+
+func (d *DMapMessage) Key() string {
+	return d.key
+}
+
+func (d *DMapMessage) SetExtra(extra interface{}) {
+	d.extra = extra
+}
+
+func (d *DMapMessage) Extra() interface{} {
+	return d.extra
 }
 
 func (d *DMapMessage) Decode() error {
@@ -102,34 +138,34 @@ func (d *DMapMessage) Decode() error {
 	if err != nil {
 		return err
 	}
-	if d.Magic != MagicDMapReq && d.Magic != MagicDMapRes {
-		return fmt.Errorf("invalid DMap message")
+	if d.magic != MagicDMapReq && d.magic != MagicDMapRes {
+		return fmt.Errorf("invalid dmap message")
 	}
 
-	// Decode Key, DMap name and message extras here.
+	// Decode key, dmap name and message extras here.
 	_, err = io.CopyN(buf, d.conn, int64(d.BodyLen))
 	if err != nil {
 		return filterNetworkErrors(err)
 	}
 
-	if d.Magic == MagicDMapReq && d.ExtraLen > 0 {
+	if d.magic == MagicDMapReq && d.ExtraLen > 0 {
 		raw := buf.Next(int(d.ExtraLen))
 		extra, err := loadExtras(raw, d.Op)
 		if err != nil {
 			return err
 		}
-		d.Extra = extra
+		d.extra = extra
 	}
-	d.DMap = string(buf.Next(int(d.DMapLen)))
-	d.Key = string(buf.Next(int(d.KeyLen)))
+	d.dmap = string(buf.Next(int(d.DMapLen)))
+	d.key = string(buf.Next(int(d.KeyLen)))
 
 	// There is no maximum value for BodyLen which includes ValueLen.
 	// So our limit is available memory amount at the time of operation.
 	// Please note that maximum partition size should not exceed 50MB for a smooth operation.
 	vlen := int(d.BodyLen) - int(d.ExtraLen) - int(d.KeyLen) - int(d.DMapLen)
 	if vlen != 0 {
-		d.Value = make([]byte, vlen)
-		copy(d.Value, buf.Next(vlen))
+		d.value = make([]byte, vlen)
+		copy(d.value, buf.Next(vlen))
 	}
 	return nil
 }
@@ -140,14 +176,14 @@ func (d *DMapMessage) Encode() error {
 	defer pool.Put(buf)
 
 	// Calculate lengths here
-	d.DMapLen = uint16(len(d.DMap))
-	d.KeyLen = uint16(len(d.Key))
-	if d.Extra != nil {
-		d.ExtraLen = uint8(binary.Size(d.Extra))
+	d.DMapLen = uint16(len(d.dmap))
+	d.KeyLen = uint16(len(d.key))
+	if d.extra != nil {
+		d.ExtraLen = uint8(binary.Size(d.extra))
 	}
-	d.BodyLen = uint32(len(d.DMap) + len(d.Key) + len(d.Value) + int(d.ExtraLen))
+	d.BodyLen = uint32(len(d.dmap) + len(d.key) + len(d.value) + int(d.ExtraLen))
 
-	err := binary.Write(buf, binary.BigEndian, d.Magic)
+	err := binary.Write(buf, binary.BigEndian, d.magic)
 	if err != nil {
 		return err
 	}
@@ -157,62 +193,28 @@ func (d *DMapMessage) Encode() error {
 		return err
 	}
 
-	if d.Extra != nil {
-		err = binary.Write(buf, binary.BigEndian, d.Extra)
+	if d.extra != nil {
+		err = binary.Write(buf, binary.BigEndian, d.extra)
 		if err != nil {
 			return err
 		}
 	}
 
-	_, err = buf.WriteString(d.DMap)
+	_, err = buf.WriteString(d.dmap)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.WriteString(d.Key)
+	_, err = buf.WriteString(d.key)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.Write(d.Value)
+	_, err = buf.Write(d.value)
 	if err != nil {
 		return err
 	}
 
 	_, err = buf.WriteTo(d.conn)
 	return filterNetworkErrors(err)
-}
-
-// Error generates an error message for the request.
-func (d *DMapMessage) Error(status StatusCode, err interface{}) *DMapMessage {
-	getError := func(err interface{}) string {
-		switch val := err.(type) {
-		case string:
-			return val
-		case error:
-			return val.Error()
-		default:
-			return ""
-		}
-	}
-
-	return &DMapMessage{
-		Magic:  MagicDMapRes,
-		DMapMessageHeader: DMapMessageHeader{
-			Op:     d.Op,
-			Status: status,
-		},
-		Value: []byte(getError(err)),
-	}
-}
-
-// Success generates a success message for the request.
-func (d *DMapMessage) Success() *DMapMessage {
-	return &DMapMessage{
-		Magic:  MagicDMapRes,
-		DMapMessageHeader: DMapMessageHeader{
-			Op:     d.Op,
-			Status: StatusOK,
-		},
-	}
 }
