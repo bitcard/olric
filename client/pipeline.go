@@ -32,29 +32,14 @@ import (
 type Pipeline struct {
 	c   *Client
 	m   sync.Mutex
-	buf *pipelineBuffer
-}
-
-// TODO: Use bufpool for this
-type pipelineBuffer struct {
-	*bytes.Buffer
-}
-
-func (p *pipelineBuffer) Close() error {
-	return nil
-}
-
-func newPipelineBuffer(data []byte) *pipelineBuffer {
-	return &pipelineBuffer{
-		Buffer: bytes.NewBuffer(data),
-	}
+	buf *bytes.Buffer
 }
 
 // NewPipeline returns a new Pipeline.
 func (c *Client) NewPipeline() *Pipeline {
 	return &Pipeline{
 		c:   c,
-		buf: newPipelineBuffer(nil),
+		buf: bytes.NewBuffer(nil),
 	}
 }
 
@@ -69,7 +54,7 @@ func (p *Pipeline) Put(dmap, key string, value interface{}) error {
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpPut)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(data)
@@ -88,7 +73,7 @@ func (p *Pipeline) PutEx(dmap, key string, value interface{}, timeout time.Durat
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpPutEx)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(data)
@@ -105,7 +90,7 @@ func (p *Pipeline) Get(dmap, key string) error {
 	defer p.m.Unlock()
 
 	req := protocol.NewDMapMessage(protocol.OpGet)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	return req.Encode()
@@ -117,7 +102,7 @@ func (p *Pipeline) Delete(dmap, key string) error {
 	defer p.m.Unlock()
 
 	req := protocol.NewDMapMessage(protocol.OpDelete)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	return req.Encode()
@@ -132,7 +117,7 @@ func (p *Pipeline) incrOrDecr(opcode protocol.OpCode, dmap, key string, delta in
 		return err
 	}
 	req := protocol.NewDMapMessage(opcode)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(value)
@@ -161,7 +146,7 @@ func (p *Pipeline) GetPut(dmap, key string, value interface{}) error {
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpGetPut)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(data)
@@ -175,7 +160,7 @@ func (p *Pipeline) Destroy(dmap string) error {
 	defer p.m.Unlock()
 
 	req := protocol.NewDMapMessage(protocol.OpDestroy)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	return req.Encode()
 }
@@ -199,7 +184,7 @@ func (p *Pipeline) PutIf(dmap, key string, value interface{}, flags int16) error
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpPutIf)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(data)
@@ -229,7 +214,7 @@ func (p *Pipeline) PutIfEx(dmap, key string, value interface{}, timeout time.Dur
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpPutIfEx)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(data)
@@ -248,7 +233,7 @@ func (p *Pipeline) Expire(dmap, key string, timeout time.Duration) error {
 	defer p.m.Unlock()
 
 	req := protocol.NewDMapMessage(protocol.OpExpire)
-	req.SetConn(p.buf)
+	req.SetBuffer(p.buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetExtra(protocol.ExpireExtra{
@@ -272,11 +257,11 @@ func (p *Pipeline) Flush() ([]PipelineResponse, error) {
 	}
 
 	// Decode the pipelined messages from pipeline response.
-	conn := newPipelineBuffer(resp.Value())
+	buf := bytes.NewBuffer(resp.Value())
 	var responses []PipelineResponse
 	var resErr error
 	for {
-		pres := protocol.NewDMapMessageFromRequest(conn)
+		pres := protocol.NewDMapMessageFromRequest(buf)
 		err := pres.Decode()
 		if err == io.EOF {
 			break

@@ -21,26 +21,12 @@ import (
 	"github.com/buraksezer/olric/internal/protocol"
 )
 
-type pipelineConn struct {
-	*bytes.Buffer
-}
-
-func (p *pipelineConn) Close() error {
-	return nil
-}
-
-func newPipelineConn(data []byte) *pipelineConn {
-	return &pipelineConn{
-		Buffer: bytes.NewBuffer(data),
-	}
-}
-
 func (db *Olric) pipelineOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	conn := newPipelineConn(req.Value())
+	buf := bytes.NewBuffer(req.Value())
 	// Decode the pipelined messages into an in-memory buffer.
 	for {
-		preq := protocol.NewDMapMessageFromRequest(conn)
+		preq := protocol.NewDMapMessageFromRequest(buf)
 		err := preq.Decode()
 		if err == io.EOF {
 			// It's done. The last message has been read.
@@ -72,5 +58,5 @@ func (db *Olric) pipelineOperation(w, r protocol.MessageReadWriter) {
 
 	// Create a success response and assign pipelined responses as value.
 	w.SetStatus(protocol.StatusOK)
-	w.SetValue(conn.Bytes())
+	w.SetValue(buf.Bytes())
 }

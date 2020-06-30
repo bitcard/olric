@@ -25,14 +25,29 @@ import (
 )
 
 func readFromStream(conn io.ReadWriteCloser, bufCh chan<- protocol.MessageReadWriter, errCh chan<- error) {
-	for {
-		msg := protocol.NewDMapMessageFromRequest(conn)
-		err := msg.Decode()
+	f := func() error {
+		buf := bufferPool.Get()
+		defer bufferPool.Put(buf)
+
+		_, err := protocol.ReadMessage(conn, buf)
 		if err != nil {
-			errCh <- err
-			return
+			return err
+
+		}
+		msg := protocol.NewDMapMessageFromRequest(buf)
+		err = msg.Decode()
+		if err != nil {
+			return err
 		}
 		bufCh <- msg
+		return nil
+	}
+
+	for {
+		if err := f(); err != nil {
+			errCh <- err
+			break
+		}
 	}
 }
 
@@ -59,7 +74,10 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- prot
 	}()
 
 	// Create a new byte stream
-	req.SetConn(conn)
+	buf := bufferPool.Get()
+	defer bufferPool.Put(buf)
+	req.SetBuffer(buf)
+
 	err = req.Encode()
 	if err != nil {
 		return err
@@ -72,7 +90,7 @@ func (c *Client) CreateStream(ctx context.Context, addr string, read chan<- prot
 	for {
 		select {
 		case msg := <-write:
-			msg.SetConn(conn)
+			msg.SetBuffer(buf)
 			err = msg.Encode()
 			if err != nil {
 				return err

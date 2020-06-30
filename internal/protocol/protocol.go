@@ -16,7 +16,9 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"strings"
 
@@ -26,8 +28,6 @@ import (
 
 // pool is good for recycling memory while reading messages from the socket.
 var pool = bufpool.New()
-
-const headerSize int64 = 12
 
 // MagicCode defines an unique code to distinguish a request message from a response message in Olric Binary Protocol.
 type MagicCode uint8
@@ -55,9 +55,9 @@ type MessageReadWriter interface {
 
 	OpCode() OpCode
 
-	SetConn(io.ReadWriteCloser)
+	SetBuffer(*bytes.Buffer)
 
-	Conn() io.ReadWriteCloser
+	Buffer() *bytes.Buffer
 
 	SetExtra(interface{})
 
@@ -66,32 +66,45 @@ type MessageReadWriter interface {
 	Response() MessageReadWriter
 }
 
-func ExtractMagic(conn io.ReadWriteCloser) (MagicCode, error) {
+const headerSize int64 = 5
+
+type Header struct {
+	Magic         MagicCode // 1 byte
+	MessageLength uint32    // 4 bytes
+}
+
+func readHeader(conn io.ReadWriteCloser) (Header, error) {
 	buf := pool.Get()
 	defer pool.Put(buf)
 
-	_, err := io.CopyN(buf, conn, 1)
+	var header Header
+	_, err := io.CopyN(buf, conn, headerSize)
 	if err != nil {
-		return 0, filterNetworkErrors(err)
+		return header, filterNetworkErrors(err)
 	}
 
-	var code MagicCode
-	err = binary.Read(buf, binary.BigEndian, &code)
+	err = binary.Read(buf, binary.BigEndian, &header)
 	if err != nil {
-		return 0, err
+		return header, err
 	}
-	return code, nil
+	return header, nil
 }
 
-// Header defines a message header for both request and response.
-type Header struct {
-	Magic    MagicCode  // 1
-	Op       OpCode     // 1
-	DMapLen  uint16     // 2
-	KeyLen   uint16     // 2
-	ExtraLen uint8      // 1
-	Status   StatusCode // 1
-	BodyLen  uint32     // 4
+func ReadMessage(src io.ReadWriteCloser, dst *bytes.Buffer) (Header, error) {
+	header, err := readHeader(src)
+	if err != nil {
+		return Header{}, err
+	}
+
+	length := int64(header.MessageLength)
+	nr, err := io.CopyN(dst, src, length)
+	if err != nil {
+		return Header{}, err
+	}
+	if nr != length {
+		return Header{}, fmt.Errorf("byte count mismatch")
+	}
+	return header, nil
 }
 
 func NewStreamMessage(listenerID uint64) *DMapMessage {

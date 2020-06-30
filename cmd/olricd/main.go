@@ -85,6 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to read or parse configuration file: %v", err)
 	}
+	
 	s, err := server.New(c)
 	if err != nil {
 		log.Fatalf("Failed to create a new olricd instance:\n%v", err)

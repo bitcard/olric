@@ -15,6 +15,7 @@
 package olric
 
 import (
+	"bytes"
 	"context"
 	"testing"
 	"time"
@@ -34,7 +35,7 @@ func TestPipeline(t *testing.T) {
 		}
 	}()
 
-	buf := newPipelineConn(nil)
+	buf := new(bytes.Buffer)
 	dmap := "test-dmap"
 	key := "test-key"
 	rawval := "test-value"
@@ -44,7 +45,7 @@ func TestPipeline(t *testing.T) {
 	}
 
 	req := protocol.NewDMapMessage(protocol.OpPut)
-	req.SetConn(buf)
+	req.SetBuffer(buf)
 	req.SetDMap(dmap)
 	req.SetKey(key)
 	req.SetValue(value)

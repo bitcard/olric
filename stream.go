@@ -56,20 +56,35 @@ func (s *stream) close() error {
 func (db *Olric) readFromStream(conn io.ReadWriteCloser, bufCh chan<- protocol.MessageReadWriter, errCh chan<- error) {
 	defer db.wg.Done()
 
-	for {
-		msg := protocol.NewDMapMessageFromRequest(conn)
-		err := msg.Decode()
+	f := func() error {
+		buf := bufferPool.Get()
+		defer bufferPool.Put(buf)
+
+		_, err := protocol.ReadMessage(conn, buf)
 		if err != nil {
-			errCh <- err
-			return
+			return err
+
+		}
+		msg := protocol.NewDMapMessageFromRequest(buf)
+		err = msg.Decode()
+		if err != nil {
+			return err
 		}
 		bufCh <- msg
+		return nil
+	}
+
+	for {
+		if err := f(); err != nil {
+			errCh <- err
+			break
+		}
 	}
 }
 
 func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 	req := r.(*protocol.DMapMessage)
-	conn := req.Conn()
+	conn := req.Buffer()
 
 	// Now, we have a TCP socket here.
 	streamID := rand.Uint64()
@@ -84,10 +99,10 @@ func (db *Olric) createStreamOperation(w, r protocol.MessageReadWriter) {
 	db.streams.m[streamID] = s
 	db.streams.mu.Unlock()
 
-	errCh := make(chan error, 1)
+	//errCh := make(chan error, 1)
 	bufCh := make(chan protocol.MessageReadWriter, 1)
 	db.wg.Add(1)
-	go db.readFromStream(conn, bufCh, errCh)
+	//go db.readFromStream(conn, bufCh, errCh)
 
 	defer func() {
 		db.streams.mu.Lock()
@@ -110,7 +125,7 @@ loop:
 			// server is gone
 			break loop
 		case msg := <-s.write:
-			msg.SetConn(conn)
+			msg.SetBuffer(conn)
 			err := msg.Encode()
 			if err != nil {
 				db.errorResponse(w, err)

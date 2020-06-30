@@ -15,12 +15,12 @@
 package protocol
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
-	"io"
 )
 
-const DMapMessageHeaderSize int64 = 11
+const DMapMessageHeaderSize uint32 = 7
 
 const (
 	MagicDMapReq MagicCode = 0xE2
@@ -34,43 +34,50 @@ type DMapMessageHeader struct {
 	KeyLen     uint16     // 2
 	ExtraLen   uint8      // 1
 	StatusCode StatusCode // 1
-	BodyLen    uint32     // 4
 }
 
 type DMapMessage struct {
-	magic             MagicCode   // [0]
+	Header                        // [0-4]
 	DMapMessageHeader             // [1..10]
 	extra             interface{} // [11..(m-1)] Command specific extras (In)
 	dmap              string      // [m..(n-1)] dmap (as needed, length in Header)
 	key               string      // [n..(x-1)] key (as needed, length in Header)
 	value             []byte      // [x..y] value (as needed, length in Header)
-	conn              io.ReadWriteCloser
+	buf               *bytes.Buffer
 }
 
 func NewDMapMessage(opcode OpCode) *DMapMessage {
 	return &DMapMessage{
-		magic: MagicDMapReq,
+		Header: Header{
+			Magic: MagicDMapReq,
+		},
 		DMapMessageHeader: DMapMessageHeader{
 			Op: opcode,
 		},
 	}
 }
 
-func NewDMapMessageFromRequest(conn io.ReadWriteCloser) *DMapMessage {
+func NewDMapMessageFromRequest(buf *bytes.Buffer) *DMapMessage {
 	return &DMapMessage{
-		magic:             MagicDMapReq,
+		Header: Header{
+			Magic:         MagicDMapReq,
+			MessageLength: uint32(buf.Len()),
+		},
 		DMapMessageHeader: DMapMessageHeader{},
-		conn:              conn,
+		buf:               buf,
 	}
 }
 
 func (d *DMapMessage) Response() MessageReadWriter {
 	return &DMapMessage{
-		magic: MagicDMapRes,
+		Header: Header{
+			Magic:         MagicDMapRes,
+			MessageLength: uint32(d.buf.Len()),
+		},
 		DMapMessageHeader: DMapMessageHeader{
 			Op: d.Op,
 		},
-		conn: d.conn,
+		buf: d.buf,
 	}
 }
 
@@ -94,12 +101,12 @@ func (d *DMapMessage) OpCode() OpCode {
 	return d.Op
 }
 
-func (d *DMapMessage) SetConn(conn io.ReadWriteCloser) {
-	d.conn = conn
+func (d *DMapMessage) SetBuffer(buf *bytes.Buffer) {
+	d.buf = buf
 }
 
-func (d *DMapMessage) Conn() io.ReadWriteCloser {
-	return d.conn
+func (d *DMapMessage) Buffer() *bytes.Buffer {
+	return d.buf
 }
 
 func (d *DMapMessage) SetDMap(dmap string) {
@@ -126,54 +133,9 @@ func (d *DMapMessage) Extra() interface{} {
 	return d.extra
 }
 
-func (d *DMapMessage) Decode() error {
-	buf := pool.Get()
-	defer pool.Put(buf)
-
-	_, err := io.CopyN(buf, d.conn, DMapMessageHeaderSize)
-	if err != nil {
-		return filterNetworkErrors(err)
-	}
-	err = binary.Read(buf, binary.BigEndian, &d.DMapMessageHeader)
-	if err != nil {
-		return err
-	}
-	if d.magic != MagicDMapReq && d.magic != MagicDMapRes {
-		return fmt.Errorf("invalid dmap message")
-	}
-
-	// Decode key, dmap name and message extras here.
-	_, err = io.CopyN(buf, d.conn, int64(d.BodyLen))
-	if err != nil {
-		return filterNetworkErrors(err)
-	}
-
-	if d.magic == MagicDMapReq && d.ExtraLen > 0 {
-		raw := buf.Next(int(d.ExtraLen))
-		extra, err := loadExtras(raw, d.Op)
-		if err != nil {
-			return err
-		}
-		d.extra = extra
-	}
-	d.dmap = string(buf.Next(int(d.DMapLen)))
-	d.key = string(buf.Next(int(d.KeyLen)))
-
-	// There is no maximum value for BodyLen which includes ValueLen.
-	// So our limit is available memory amount at the time of operation.
-	// Please note that maximum partition size should not exceed 50MB for a smooth operation.
-	vlen := int(d.BodyLen) - int(d.ExtraLen) - int(d.KeyLen) - int(d.DMapLen)
-	if vlen != 0 {
-		d.value = make([]byte, vlen)
-		copy(d.value, buf.Next(vlen))
-	}
-	return nil
-}
-
 // Encode writes a protocol message to given TCP connection by encoding it.
 func (d *DMapMessage) Encode() error {
-	buf := pool.Get()
-	defer pool.Put(buf)
+	d.buf.Reset()
 
 	// Calculate lengths here
 	d.DMapLen = uint16(len(d.dmap))
@@ -181,40 +143,66 @@ func (d *DMapMessage) Encode() error {
 	if d.extra != nil {
 		d.ExtraLen = uint8(binary.Size(d.extra))
 	}
-	d.BodyLen = uint32(len(d.dmap) + len(d.key) + len(d.value) + int(d.ExtraLen))
+	d.MessageLength = DMapMessageHeaderSize + uint32(len(d.dmap)+len(d.key)+len(d.value)+int(d.ExtraLen))
 
-	err := binary.Write(buf, binary.BigEndian, d.magic)
+	err := binary.Write(d.buf, binary.BigEndian, d.Header)
 	if err != nil {
 		return err
 	}
 
-	err = binary.Write(buf, binary.BigEndian, d.DMapMessageHeader)
+	err = binary.Write(d.buf, binary.BigEndian, d.DMapMessageHeader)
 	if err != nil {
 		return err
 	}
 
 	if d.extra != nil {
-		err = binary.Write(buf, binary.BigEndian, d.extra)
+		err = binary.Write(d.buf, binary.BigEndian, d.extra)
 		if err != nil {
 			return err
 		}
 	}
 
-	_, err = buf.WriteString(d.dmap)
+	_, err = d.buf.WriteString(d.dmap)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.WriteString(d.key)
+	_, err = d.buf.WriteString(d.key)
 	if err != nil {
 		return err
 	}
 
-	_, err = buf.Write(d.value)
+	_, err = d.buf.Write(d.value)
+	return err
+}
+
+func (d *DMapMessage) Decode() error {
+	err := binary.Read(d.buf, binary.BigEndian, &d.DMapMessageHeader)
 	if err != nil {
 		return err
 	}
+	if d.Magic != MagicDMapReq && d.Magic != MagicDMapRes {
+		return fmt.Errorf("invalid dmap message")
+	}
 
-	_, err = buf.WriteTo(d.conn)
-	return filterNetworkErrors(err)
+	if d.Magic == MagicDMapReq && d.ExtraLen > 0 {
+		raw := d.buf.Next(int(d.ExtraLen))
+		extra, err := loadExtras(raw, d.Op)
+		if err != nil {
+			return err
+		}
+		d.extra = extra
+	}
+	d.dmap = string(d.buf.Next(int(d.DMapLen)))
+	d.key = string(d.buf.Next(int(d.KeyLen)))
+
+	// There is no maximum value for BodyLen which also includes ValueLen.
+	// So our limit is available memory amount at the time of execution.
+	// Please note that maximum partition size should not exceed 50MB for a smooth operation.
+	vlen := int(d.MessageLength) - int(d.ExtraLen) - int(d.KeyLen) - int(d.DMapLen) - int(DMapMessageHeaderSize)
+	if vlen != 0 {
+		d.value = make([]byte, vlen)
+		copy(d.value, d.buf.Next(vlen))
+	}
+	return nil
 }

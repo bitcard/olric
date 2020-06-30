@@ -18,6 +18,7 @@ package olric
 import (
 	"context"
 	"fmt"
+	"github.com/buraksezer/olric/internal/bufpool"
 	"net"
 	"strconv"
 	"strings"
@@ -140,6 +141,9 @@ type Olric struct {
 	// the server is ready to accept new connections.
 	started func()
 }
+
+// pool is good for recycling memory while reading messages from the socket.
+var bufferPool = bufpool.New()
 
 // New creates a new Olric instance, otherwise returns an error.
 func New(c *config.Config) (*Olric, error) {

@@ -20,23 +20,23 @@ import (
 )
 
 type fakeTCPConn struct {
-	bytes.Buffer
+	*bytes.Buffer
 }
 
 func (f *fakeTCPConn) Close() error {
 	return nil
 }
 
-func newFakeTCPConn() *fakeTCPConn {
+func newFakeTCPConn(buf []byte) *fakeTCPConn {
 	return &fakeTCPConn{
-		Buffer: bytes.Buffer{},
+		Buffer: bytes.NewBuffer(buf),
 	}
 }
 
 func TestDMapMessage_Encode(t *testing.T) {
-	conn := newFakeTCPConn()
+	buf := new(bytes.Buffer)
 	msg := NewDMapMessage(OpPut)
-	msg.SetConn(conn)
+	msg.SetBuffer(buf)
 	msg.dmap = "mydmap"
 	msg.key = "mykey"
 	msg.value = []byte("myvalue")
@@ -47,11 +47,11 @@ func TestDMapMessage_Encode(t *testing.T) {
 }
 
 func TestDMapMessage_Decode(t *testing.T) {
-	conn := newFakeTCPConn()
+	buf := new(bytes.Buffer)
 
 	// Encode first
 	msg := NewDMapMessage(OpPut)
-	msg.SetConn(conn)
+	msg.SetBuffer(buf)
 	msg.dmap = "mydmap"
 	msg.key = "mykey"
 	msg.value = []byte("myvalue")
@@ -60,17 +60,18 @@ func TestDMapMessage_Decode(t *testing.T) {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
 
-	code, err := ExtractMagic(conn)
+	conn := newFakeTCPConn(buf.Bytes())
+	buf.Reset()
+	header, err := ReadMessage(conn, buf)
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
 	}
-	if code != MagicDMapReq {
-		t.Fatalf("Expected MagicDMapReq (%d). Got: %d", MagicDMapReq, code)
+	if header.Magic != MagicDMapReq {
+		t.Fatalf("Expected MagicDMapReq (%d). Got: %d", MagicDMapReq, header.Magic)
 	}
 
 	// Decode message from the TCP socket
-
-	req := NewDMapMessageFromRequest(conn)
+	req := NewDMapMessageFromRequest(buf)
 	err = req.Decode()
 	if err != nil {
 		t.Fatalf("Expected nil. Got: %v", err)
@@ -85,6 +86,6 @@ func TestDMapMessage_Decode(t *testing.T) {
 	}
 
 	if !bytes.Equal(req.Value(), []byte("myvalue")) {
-		t.Fatalf("Expected mykey. Got: %v", req.Key())
+		t.Fatalf("Expected myvalue. Got: %v", string(req.Value()))
 	}
 }

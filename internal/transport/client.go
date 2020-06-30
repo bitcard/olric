@@ -155,16 +155,26 @@ func (c *Client) RequestTo(addr string, req protocol.MessageReadWriter) (protoco
 		}
 	}()
 
-	req.SetConn(conn)
+	buf := bufferPool.Get()
+	defer bufferPool.Put(buf)
+	req.SetBuffer(buf)
+
 	err = req.Encode()
 	if err != nil {
 		deadConn = true
 		return nil, err
 	}
 
+	_, err = req.Buffer().WriteTo(conn)
+	if err != nil {
+		return nil, err
+	}
+
+	// Await for the response
+	buf.Reset()
+	_, err = protocol.ReadMessage(conn, buf)
 	// Response is a shortcut to create a response message for the request.
 	resp := req.Response()
-	protocol.ExtractMagic(conn)
 	err = resp.Decode()
 	if err != nil {
 		deadConn = true

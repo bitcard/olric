@@ -24,6 +24,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/buraksezer/olric/internal/bufpool"
 	"github.com/buraksezer/olric/internal/flog"
 	"github.com/buraksezer/olric/internal/protocol"
 	multierror "github.com/hashicorp/go-multierror"
@@ -34,6 +35,9 @@ const (
 	idleConn uint32 = 0
 	busyConn uint32 = 1
 )
+
+// pool is good for recycling memory while reading messages from the socket.
+var bufferPool = bufpool.New()
 
 // Server implements a concurrent TCP server.
 type Server struct {
@@ -115,13 +119,17 @@ func (s *Server) controlConnLifeCycle(conn io.ReadWriteCloser, connStatus *uint3
 
 // processMessage waits for a new request, handles it and returns the appropriate response.
 func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) error {
-	var req protocol.MessageReadWriter
-	code, err := protocol.ExtractMagic(conn)
+	buf := bufferPool.Get()
+	defer bufferPool.Put(buf)
+
+	header, err := protocol.ReadMessage(conn, buf)
 	if err != nil {
 		return err
 	}
-	if code == protocol.MagicDMapReq {
-		req = protocol.NewDMapMessageFromRequest(conn)
+
+	var req protocol.MessageReadWriter
+	if header.Magic == protocol.MagicDMapReq {
+		req = protocol.NewDMapMessageFromRequest(buf)
 	} else {
 		// TODO: Return a proper error
 		return fmt.Errorf("invalid magic")
@@ -142,7 +150,12 @@ func (s *Server) processMessage(conn io.ReadWriteCloser, connStatus *uint32) err
 	resp := req.Response()
 	// The dispatcher is defined by olric package and responsible to evaluate the incoming message.
 	s.dispatcher(resp, req)
-	return resp.Encode()
+	err = resp.Encode()
+	if err != nil {
+		return err
+	}
+	_, err = resp.Buffer().WriteTo(conn)
+	return err
 }
 
 // processConn waits for requests and calls request handlers to generate a response. The connections are reusable.
